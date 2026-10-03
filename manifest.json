@@ -1,0 +1,12 @@
+{
+  "manifest_version": 2,
+  "name": "Window Freeze",
+  "version": "0.1.0",
+  "description": "After a window has been unfocused for a while, cover its active tab with a placeholder titled 'Frozen: <title>' and discard the tab. Refocusing the window brings the tab back.",
+  "browser_specific_settings": {
+    "gecko": { "id": "window-freeze@tristan", "strict_min_version": "128.0" }
+  },
+  "permissions": ["tabs", "storage", "alarms"],
+  "background": { "scripts": ["background.js"] },
+  "options_ui": { "page": "options.html" }
+}
