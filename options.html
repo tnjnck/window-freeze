@@ -1,6 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8"></head>
-<body style="font:14px system-ui,sans-serif">
+<body style="font:14px system-ui,sans-serif;display:grid;gap:.6em">
   <label>Freeze a window after <input id="m" type="number" min="1" style="width:4em"> minutes unfocused</label>
+  <label>Unfreeze after the window has been focused for <input id="d" type="number" min="0" step="0.5" style="width:4em"> seconds (0: immediately). A click or key on the frozen page unfreezes at once.</label>
   <script src="options.js"></script>
 </body></html>

@@ -6,10 +6,13 @@ const placeholders = new Map();
 const snapshots = new Map();
 const PREFIX = "Frozen: ";
 let minutes = 5;
+let dwell = 2; // seconds a window must stay focused before it unfreezes; 0 = at once
+const dwellTimers = new Map(); // windowId -> timeout
 
 async function loadSettings() {
-  const s = await browser.storage.local.get({ minutes: 5 });
+  const s = await browser.storage.local.get({ minutes: 5, dwell: 2 });
   minutes = Number(s.minutes) || 5;
+  dwell = Math.max(0, Number(s.dwell) || 0);
 }
 loadSettings();
 browser.storage.onChanged.addListener(loadSettings);
@@ -28,7 +31,10 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
     if (w.id === windowId) unfocusedSince.delete(w.id);
     else if (!unfocusedSince.has(w.id)) unfocusedSince.set(w.id, now);
   }
-  if (windowId !== browser.windows.WINDOW_ID_NONE) await unfreeze(windowId);
+  for (const [id, t] of dwellTimers) { clearTimeout(t); dwellTimers.delete(id); }
+  if (windowId === browser.windows.WINDOW_ID_NONE) return;
+  if (dwell === 0) return unfreeze(windowId);
+  dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, dwell * 1000));
 });
 
 browser.windows.onRemoved.addListener((id) => unfocusedSince.delete(id));
