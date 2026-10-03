@@ -2,7 +2,10 @@
 <html><head><meta charset="utf-8">
 <style>
   html,body{height:100%;margin:0;background:#1e1e24;color:#aaa;font:15px system-ui,sans-serif}
-  body{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1em}
+  body{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1em;
+       background-size:cover;background-position:top left;background-repeat:no-repeat}
+  body.shot #title,body.shot #icon{display:none}
+  body.shot #go{position:fixed;right:12px;bottom:12px;opacity:.6}
   img{width:32px;height:32px}
   button{font:inherit;padding:.4em 1em}
 </style></head>

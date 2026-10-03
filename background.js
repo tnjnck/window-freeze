@@ -2,6 +2,8 @@
 const unfocusedSince = new Map();
 // placeholder tabId -> original tabId
 const placeholders = new Map();
+// placeholder tabId -> JPEG data URL of the page at freeze time
+const snapshots = new Map();
 const PREFIX = "Frozen: ";
 let minutes = 5;
 
@@ -30,7 +32,7 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
 });
 
 browser.windows.onRemoved.addListener((id) => unfocusedSince.delete(id));
-browser.tabs.onRemoved.addListener((id) => placeholders.delete(id));
+browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); snapshots.delete(id); });
 
 browser.alarms.create("check", { periodInMinutes: 1 });
 browser.alarms.onAlarm.addListener(async () => {
@@ -55,8 +57,12 @@ async function freeze(windowId) {
   console.log("freeze", windowId, tab.title);
   const url = browser.runtime.getURL("frozen.html") +
     "?t=" + encodeURIComponent(tab.title || tab.url) + "&f=" + encodeURIComponent(tab.favIconUrl || "");
+  // Screenshot first, while the tab is still the visible one, so the
+  // placeholder looks like the page instead of flashing a blank.
+  const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
   const ph = await browser.tabs.create({ windowId, url, active: true, index: tab.index + 1 });
   placeholders.set(ph.id, tab.id);
+  if (shot) snapshots.set(ph.id, shot);
   try {
     await browser.tabs.discard(tab.id);
   } catch (e) {
@@ -84,5 +90,7 @@ async function restore(placeholderId) {
 }
 
 browser.runtime.onMessage.addListener((msg, sender) => {
-  if (msg === "restore" && sender.tab) return restore(sender.tab.id);
+  if (!sender.tab) return;
+  if (msg === "restore") return restore(sender.tab.id);
+  if (msg === "snapshot") return Promise.resolve(snapshots.get(sender.tab.id) || null);
 });

@@ -6,7 +6,7 @@
   "browser_specific_settings": {
     "gecko": { "id": "window-freeze@tristan", "strict_min_version": "128.0" }
   },
-  "permissions": ["tabs", "storage", "alarms"],
+  "permissions": ["tabs", "storage", "alarms", "<all_urls>"],
   "background": { "scripts": ["background.js"] },
   "options_ui": { "page": "options.html" }
 }
