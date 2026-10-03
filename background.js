@@ -46,8 +46,13 @@ function skip(tab) {
 }
 
 async function freeze(windowId) {
+  // Tabless (popup / web-app) windows: creating a tab there is intercepted by
+  // the web-app extensions and spawns stray windows. Leave them alone.
+  const win = await browser.windows.get(windowId).catch(() => null);
+  if (!win || win.type !== "normal") return;
   const [tab] = await browser.tabs.query({ windowId, active: true });
   if (skip(tab)) return;
+  console.log("freeze", windowId, tab.title);
   const url = browser.runtime.getURL("frozen.html") +
     "?t=" + encodeURIComponent(tab.title || tab.url) + "&f=" + encodeURIComponent(tab.favIconUrl || "");
   const ph = await browser.tabs.create({ windowId, url, active: true, index: tab.index + 1 });
@@ -67,6 +72,7 @@ async function unfreeze(windowId) {
 
 async function restore(placeholderId) {
   const orig = placeholders.get(placeholderId);
+  console.log("restore", placeholderId, "->", orig);
   placeholders.delete(placeholderId);
   try {
     await browser.tabs.get(orig);
