@@ -22,6 +22,11 @@ and discards it.
   original tab is reactivated and the placeholder closed. Reactivating a
   discarded tab is a page load; it starts as soon as the window is focused, so
   the dwell hides most of it.
+- Optionally, a window that is on screen but unfocused (another monitor, or a
+  tiled neighbour) counts as in use: it is not frozen and, if frozen, thaws.
+  This uses the page visibility state, which depends on the compositor
+  reporting occlusion; the popup shows how many windows Firefox thinks are on
+  screen so you can check before enabling it.
 - Background tabs in any window are unloaded after they have been out of view
   for M minutes (default 30; 0 disables), with a title prefix (default `💤 `)
   that the tab strip shows until the tab is next loaded.

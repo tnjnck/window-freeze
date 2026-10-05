@@ -18,6 +18,8 @@
     <label>Thaw after it has been focused for (seconds; 0 = at once) <input type="number" min="0" step="0.5" data-k="dwell"></label>
     <div class="hint">The delay stops a window thawing because the pointer crossed it. A click or key on the frozen page thaws it at once.</div>
     <label>Start loading the page behind the placeholder as soon as the window is focused <input type="checkbox" data-k="preload"></label>
+    <label>A window that is on screen counts as in use, even unfocused: it is not frozen, and a frozen one thaws after the delay <input type="checkbox" data-k="visibleIsActive"></label>
+    <div class="hint">Relies on the browser knowing which windows are on screen. The popup's "on screen" count shows whether it does on your desktop.</div>
     <label>Unload a background tab after it has been out of view for (minutes; 0 = never) <input type="number" min="0" data-k="idleMinutes"></label>
     <div class="hint">Covers the other tabs of the window you are working in. With this on, a separate tab unloader is not needed.</div>
   </fieldset>

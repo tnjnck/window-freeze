@@ -144,6 +144,17 @@ async function hasEditedForm(tabId) {
   }
 }
 
+async function windowVisible(windowId) {
+  const [t] = await browser.tabs.query({ windowId, active: true });
+  if (!t) return false;
+  try {
+    const [v] = await browser.tabs.executeScript(t.id, { code: "document.visibilityState", runAt: "document_start" });
+    return v === "visible";
+  } catch (e) {
+    return false; // restricted page: unknown, treat as not visible
+  }
+}
+
 async function unloadable(tab) {
   const why = !tab ? "no tab" : tab.discarded ? "discarded" : tab.audible ? "audible" :
     placeholders.has(tab.id) ? "placeholder" : !/^(https?|file):/.test(tab.url || "") ? "not a web page" :
@@ -160,11 +171,12 @@ function placeholderUrl(tab, extra) {
     "&f=" + encodeURIComponent(tab.favIconUrl || "") + extra;
 }
 
-async function freeze(windowId) {
+async function freeze(windowId, manual = false) {
   const win = await browser.windows.get(windowId).catch(() => null);
   if (!win) return;
   const [tab] = await browser.tabs.query({ windowId, active: true });
   if (!tab || tab.url.startsWith(PAGE)) return;
+  if (S.visibleIsActive && !manual && await windowVisible(windowId)) { kept.set(windowId, "visible"); return; }
   if (await unloadable(tab)) {
     console.log("freeze", windowId, win.type, tab.title);
     // Screenshot first, while the tab is still the visible one.
@@ -234,12 +246,12 @@ const H = 3600000;
 async function command(name) {
   const w = await browser.windows.getLastFocused();
   switch (name) {
-    case "freeze-now":   exempt.delete(w.id); armed.add(w.id); return freeze(w.id).catch((e) => console.warn("freeze", e));
+    case "freeze-now":   exempt.delete(w.id); armed.add(w.id); return freeze(w.id, true).catch((e) => console.warn("freeze", e));
     case "freeze-all":
       for (const x of await browser.windows.getAll()) {
         exempt.delete(x.id);
         if (x.id === w.id) armed.add(x.id);
-        await freeze(x.id).catch((e) => console.warn("freeze", x.id, e));
+        await freeze(x.id, true).catch((e) => console.warn("freeze", x.id, e));
       }
       return;
     case "exempt-1h":    exempt.set(w.id, Date.now() + H); return;
@@ -264,6 +276,17 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
     case "restore":
       if (sender.tab) return restore(sender.tab.id);
       return;
+    case "visible": {
+      if (!sender.tab) return;
+      const wid = sender.tab.windowId;
+      if (!msg.visible) { const t = dwellTimers.get(wid); if (t) { clearTimeout(t); dwellTimers.delete(wid); } return; }
+      if (armed.has(wid)) return;
+      if (S.preload) preload(wid);
+      if (S.visibleIsActive && !dwellTimers.has(wid)) {
+        dwellTimers.set(wid, setTimeout(() => { dwellTimers.delete(wid); unfreeze(wid); }, S.dwell * 1000));
+      }
+      return;
+    }
     case "snapshot":
       if (!sender.tab) return null;
       return (await browser.storage.local.get("shot:" + sender.tab.id))["shot:" + sender.tab.id] || null;
@@ -272,8 +295,10 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
       const tabs = await browser.tabs.query({});
       const wins = await browser.windows.getAll();
       const frozen = tabs.filter((t) => t.active && t.url.startsWith(PAGE)).length;
+      let visible = 0;
+      for (const x of wins) if (await windowVisible(x.id)) visible++;
       return { windowId: w.id, exemptUntil: exempt.get(w.id) || 0, pausedUntil, kept: kept.get(w.id) || "",
-               windows: wins.length, frozen,
+               windows: wins.length, frozen, visible,
                tabs: tabs.length - placeholders.size,
                discarded: tabs.filter((t) => t.discarded).length };
     }

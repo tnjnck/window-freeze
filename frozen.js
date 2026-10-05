@@ -34,6 +34,9 @@ if (preview) {
     if (shot) shotEl.style.backgroundImage = `url(${shot})`;
   });
   const resume = () => q.has("nav") ? history.back() : browser.runtime.sendMessage("restore");
+  const report = () => browser.runtime.sendMessage({ type: "visible", visible: document.visibilityState === "visible" });
+  addEventListener("visibilitychange", report);
+  report();
   addEventListener("mousedown", resume);
   addEventListener("keydown", (e) => { if (!e.ctrlKey && !e.altKey && !e.metaKey) resume(); });
 }
