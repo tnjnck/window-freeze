@@ -2,6 +2,7 @@ const fields = [...document.querySelectorAll("[data-k]")];
 const frame = document.getElementById("frame");
 const purl = document.getElementById("purl");
 const rerr = document.getElementById("rerr");
+document.getElementById("ver").textContent = "v" + browser.runtime.getManifest().version;
 const sampleCtx = templateContext("An example article — Example Site", "https://example.org/article", Date.now());
 
 // the sample page, or the URL typed into "Preview as URL" with its host as title

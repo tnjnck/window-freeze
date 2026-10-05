@@ -1,73 +1,104 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="theme.css">
+<html><head><meta charset="utf-8"><title>Window Freeze settings</title><link rel="stylesheet" href="theme.css">
 <style>
-  body{margin:0;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:16px;min-width:720px;font-size:14px}
-  fieldset{border:1px solid var(--line);border-radius:6px;margin:0 0 12px;display:grid;gap:8px}
-  legend{font-weight:600}
-  label{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px}
-  input[type=number]{width:5em}
-  input[type=text]{width:16em}
-  textarea{width:100%;height:7em;font:12px monospace;grid-column:1/-1;box-sizing:border-box}
-  #rules{height:auto}
-  #rerr{white-space:pre-line;color:#c33}
-  #rdef{margin:0;padding:6px 8px;font:12px monospace;color:var(--muted);background:var(--hover);border-radius:4px;grid-column:1/-1}
-  iframe{width:100%;aspect-ratio:16/10;border:1px solid var(--line);border-radius:6px;background:#1e1e24}
-  #preview{position:sticky;top:8px}
+  body{margin:0;padding:24px;font-size:14px;background:var(--bg)}
+  #page{max-width:1200px;margin:0 auto}
+  header{display:flex;align-items:center;gap:10px;margin:0 0 20px;flex-wrap:wrap}
+  header img{width:28px;height:28px}
+  header h1{margin:0;font-size:20px;font-weight:600}
+  #ver{color:var(--muted);font-size:13px}
+  #links{flex-basis:100%;margin-top:4px;color:var(--muted);font-size:13px;display:flex;gap:16px;flex-wrap:wrap}
+  #links a{color:inherit}
+  #cols{display:grid;grid-template-columns:1fr;gap:24px;align-items:start}
+  @media (min-width:1000px){
+    #cols{grid-template-columns:minmax(0,55fr) minmax(0,45fr)}
+    #settings{order:0}
+    #preview{order:1;position:sticky;top:24px}
+  }
+  #preview{order:0;display:grid;gap:8px}
+  #preview label{display:grid;gap:4px}
+  #purl{width:100%;box-sizing:border-box}
+  iframe{width:100%;aspect-ratio:16/10;border:1px solid var(--line);border-radius:6px;background:#1e1e24;display:block}
+  section{border:1px solid var(--line);border-radius:8px;padding:16px 20px;margin:0 0 16px;display:grid;gap:10px}
+  section h2{margin:0 0 4px;font-size:16px;font-weight:600}
+  .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}
+  .row+.hint,.block .hint{margin-top:-4px}
+  .hint code{font-size:12px}
+  input[type=text]{width:22em;max-width:100%;box-sizing:border-box}
+  input[type=number]{width:6em;box-sizing:border-box}
+  textarea{width:100%;min-height:10em;resize:vertical;box-sizing:border-box;font:13px monospace;white-space:pre;overflow:auto}
+  #rules{min-height:14em}
+  #rerr{white-space:pre-line;color:#c33;font-size:13px}
+  #rerr:empty{display:none}
+  #rdef{margin:0;padding:8px 10px;font:13px monospace;color:var(--muted);background:var(--hover);border-radius:4px;overflow-x:auto}
 </style></head>
 <body>
-<div>
-  <fieldset><legend>Timing</legend>
-    <label>Freeze a window after it has been unfocused for (minutes) <input type="number" min="1" data-k="minutes"></label>
-    <label>Thaw after it has been focused for (seconds; 0 = at once) <input type="number" min="0" step="0.5" data-k="dwell"></label>
+<div id="page">
+<header>
+  <img src="icon.svg" alt="">
+  <h1>Window Freeze</h1>
+  <span id="ver"></span>
+  <div id="links">
+    <span>Keyboard shortcuts: about:addons → gear → Manage Extension Shortcuts</span>
+    <a href="https://github.com/tnjnck/window-freeze" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</header>
+<div id="cols">
+<div id="settings">
+  <section><h2>Timing</h2>
+    <label class="row"><span>Freeze a window after it has been unfocused for (minutes)</span> <input type="number" min="1" data-k="minutes"></label>
+    <label class="row"><span>Thaw after it has been focused for (seconds; 0 = at once)</span> <input type="number" min="0" step="0.5" data-k="dwell"></label>
     <div class="hint">The delay stops a window thawing because the pointer crossed it. A click or key on the frozen page thaws it at once.</div>
-    <label>Start loading the page behind the placeholder as soon as the window is focused <input type="checkbox" data-k="preload"></label>
-    <label>A window that is on screen counts as in use, even unfocused: it is not frozen, and a frozen one thaws after the delay <input type="checkbox" data-k="visibleIsActive"></label>
+    <label class="row"><span>Start loading the page behind the placeholder as soon as the window is focused</span> <input type="checkbox" data-k="preload"></label>
+    <label class="row"><span>A window that is on screen counts as in use, even unfocused: it is not frozen, and a frozen one thaws after the delay</span> <input type="checkbox" data-k="visibleIsActive"></label>
     <div class="hint">Relies on the browser knowing which windows are on screen. The popup's "on screen" count shows whether it does on your desktop.</div>
-    <label>Unload a background tab after it has been out of view for (minutes; 0 = never) <input type="number" min="0" data-k="idleMinutes"></label>
+    <label class="row"><span>Unload a background tab after it has been out of view for (minutes; 0 = never)</span> <input type="number" min="0" data-k="idleMinutes"></label>
     <div class="hint">Covers the other tabs of the window you are working in. With this on, a separate tab unloader is not needed.</div>
-  </fieldset>
-  <fieldset><legend>What gets unloaded</legend>
-    <label>The window's other tabs too, not only the active one <input type="checkbox" data-k="wholeWindow"></label>
-    <label>Leave pinned tabs loaded <input type="checkbox" data-k="skipPinned"></label>
-    <label>Leave tabs with an edited form field loaded <input type="checkbox" data-k="protectForms"></label>
+  </section>
+  <section><h2>What gets unloaded</h2>
+    <label class="row"><span>The window's other tabs too, not only the active one</span> <input type="checkbox" data-k="wholeWindow"></label>
+    <label class="row"><span>Leave pinned tabs loaded</span> <input type="checkbox" data-k="skipPinned"></label>
+    <label class="row"><span>Leave tabs with an edited form field loaded</span> <input type="checkbox" data-k="protectForms"></label>
     <div class="hint">Playing audio and already-unloaded tabs are always left alone.</div>
-    <label>Prefix for unloaded tabs' titles <input type="text" data-k="unloadedPrefix" style="width:5em"></label>
-  </fieldset>
-  <fieldset><legend>Placeholder</legend>
-    <label>Window title <input type="text" data-k="titleTemplate"></label>
+    <label class="row"><span>Prefix for unloaded tabs' titles</span> <input type="text" data-k="unloadedPrefix" style="width:6em"></label>
+  </section>
+  <section><h2>Placeholder</h2>
+    <label class="row"><span>Window title</span> <input type="text" data-k="titleTemplate"></label>
     <div class="hint">Keep the original title in it: window-manager rules and launchers that match on the title then still find the window.</div>
-    <label>Label on the page <input type="text" data-k="labelTemplate"></label>
+    <label class="row"><span>Label on the page</span> <input type="text" data-k="labelTemplate"></label>
     <div class="hint">Placeholders: {title} {url} {host} {date} {time}</div>
-    <label>Background <select data-k="style">
+    <label class="row"><span>Background</span> <select data-k="style">
       <option value="blur">blurred screenshot</option>
       <option value="dim">dimmed screenshot</option>
       <option value="solid">solid colour</option>
       <option value="reader">readable text snapshot</option></select></label>
     <div class="hint">Text and links only; scroll and read without loading the page. Apps and canvas pages fall back to the screenshot.</div>
-    <label>Text snapshot limit (characters) <input type="number" min="1000" step="1000" data-k="readerMaxChars"></label>
-    <label>Blur (px) <input type="number" min="0" max="40" data-k="blur"></label>
-    <label>Darken (%) <input type="number" min="0" max="100" data-k="dim"></label>
-    <label>Colour <input type="color" data-k="color"></label>
-    <label>Show favicon <input type="checkbox" data-k="showFavicon"></label>
-    <label>Show label <input type="checkbox" data-k="showLabel"></label>
-  </fieldset>
-  <fieldset><legend>Never freeze</legend>
+    <label class="row"><span>Text snapshot limit (characters)</span> <input type="number" min="1000" step="1000" data-k="readerMaxChars"></label>
+    <label class="row"><span>Blur (px)</span> <input type="number" min="0" max="40" data-k="blur"></label>
+    <label class="row"><span>Darken (%)</span> <input type="number" min="0" max="100" data-k="dim"></label>
+    <label class="row"><span>Colour</span> <input type="color" data-k="color"></label>
+    <label class="row"><span>Show favicon</span> <input type="checkbox" data-k="showFavicon"></label>
+    <label class="row"><span>Show label</span> <input type="checkbox" data-k="showLabel"></label>
+  </section>
+  <section class="block"><h2>Never freeze</h2>
     <div class="hint">One pattern per line, matched against the page URL. <code>*</code> matches anything; a line without <code>*</code> matches as a substring. Lines starting with <code>#</code> are ignored. The page context menu has "Never freeze this site"; <code>freeze = never</code> in a rule below does the same.</div>
     <textarea data-k="exclude" placeholder="app.slack.com&#10;*://mail.google.com/*"></textarea>
-  </fieldset>
-  <fieldset><legend>Per-site rules</legend>
+  </section>
+  <section class="block"><h2>Per-site rules</h2>
     <div class="hint">A rule is one or more pattern lines (syntax as above) followed by <code>key = value</code> lines; a blank line ends it. Every rule whose pattern matches the page URL applies, least specific first (specificity = characters other than <code>*</code> in the pattern; ties in text order), each overriding the last. Lines starting with <code>#</code> are ignored.<br>
     Keys: style, blur, dim, color, showFavicon, showLabel, titleTemplate, labelTemplate, minutes, dwell, idleMinutes, protectForms, skipPinned, wholeWindow, preload, readerMaxChars, unloadedPrefix, freeze (never | normal).</div>
     <div class="hint">Defaults, as a rule. A <code>*</code> block in your rules overrides these; more specific patterns override <code>*</code>.</div>
     <pre id="rdef"></pre>
-    <textarea id="rules" data-k="rules" rows="12" placeholder="*.wikipedia.org/*&#10;style = reader&#10;minutes = 15&#10;&#10;app.slack.com&#10;freeze = never"></textarea>
+    <textarea id="rules" data-k="rules" placeholder="*.wikipedia.org/*&#10;style = reader&#10;minutes = 15&#10;&#10;app.slack.com&#10;freeze = never"></textarea>
     <div id="rerr"></div>
-  </fieldset>
+  </section>
 </div>
 <div id="preview">
-  <label>Preview as URL <input type="text" id="purl" placeholder="https://example.org/article"></label>
+  <label><span>Preview as URL</span> <input type="text" id="purl" placeholder="https://example.org/article"></label>
   <iframe id="frame"></iframe>
   <div class="hint">Preview updates as you type. Window title: <b id="ptitle"></b></div>
+</div>
+</div>
 </div>
 <script src="settings.js"></script>
 <script src="options.js"></script>

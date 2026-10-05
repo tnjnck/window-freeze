@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Window Freeze",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Unloads the tabs of windows you have not used for a while, including each window's active tab, which other tab unloaders cannot reach. A blurred placeholder stands in; refocusing the window brings the page back.",
   "browser_specific_settings": {
     "gecko": {
@@ -35,7 +35,8 @@
     "default_icon": "icon.svg"
   },
   "options_ui": {
-    "page": "options.html"
+    "page": "options.html",
+    "open_in_tab": true
   },
   "icons": {
     "48": "icon.svg",
