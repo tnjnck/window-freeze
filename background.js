@@ -83,6 +83,7 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
   if (windowId === browser.windows.WINDOW_ID_NONE) return;
   if (armed.has(windowId)) return;
   if (S.dwell === 0) return unfreeze(windowId);
+  if (S.preload) preload(windowId);
   dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, S.dwell * 1000));
 });
 browser.tabs.onActivated.addListener((info) => {
@@ -190,6 +191,16 @@ async function freeze(windowId) {
       if (await unloadable(t)) await unload(t);
     }
   }
+}
+
+// Reloading a discarded tab loads it without activating it, so by the time
+// the dwell ends the page is already up behind the placeholder.
+async function preload(windowId) {
+  const [active] = await browser.tabs.query({ windowId, active: true });
+  const orig = active && placeholders.get(active.id);
+  if (orig === undefined) return;
+  const t = await browser.tabs.get(orig).catch(() => null);
+  if (t && t.discarded) browser.tabs.reload(orig).catch(() => {});
 }
 
 async function unfreeze(windowId) {

@@ -20,7 +20,8 @@ and discards it.
 - The window thaws when it has been focused for a couple of seconds (default 2;
   0 for immediately), or at once on a click or keypress on the placeholder. The
   original tab is reactivated and the placeholder closed. Reactivating a
-  discarded tab is a page load.
+  discarded tab is a page load; it starts as soon as the window is focused, so
+  the dwell hides most of it.
 - Background tabs in any window are unloaded after they have been out of view
   for M minutes (default 30; 0 disables), with a title prefix (default `💤 `)
   that the tab strip shows until the tab is next loaded.
