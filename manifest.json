@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Window Freeze",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "After a window has been unfocused for a while, cover its active tab with a placeholder titled 'Frozen: <title>' and discard the tab. Refocusing the window brings the tab back.",
   "browser_specific_settings": {
     "gecko": {
@@ -28,9 +28,37 @@
   },
   "browser_action": {
     "default_title": "Window Freeze",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": "icon.svg"
   },
   "options_ui": {
     "page": "options.html"
+  },
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  },
+  "commands": {
+    "freeze-now": {
+      "description": "Freeze this window now"
+    },
+    "exempt-1h": {
+      "description": "This window: no freeze for 1 h"
+    },
+    "exempt-never": {
+      "description": "This window: never freeze"
+    },
+    "exempt-clear": {
+      "description": "This window: clear exemption"
+    },
+    "pause-1h": {
+      "description": "All windows: pause freezing for 1 h"
+    },
+    "pause": {
+      "description": "All windows: pause freezing"
+    },
+    "resume": {
+      "description": "All windows: resume freezing"
+    }
   }
 }

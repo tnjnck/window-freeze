@@ -10,6 +10,17 @@ or the Resume button, reactivates the tab and closes the placeholder.
 The title prefix keeps sway `[title=...]` criteria and rofi matching working;
 `$DOTFILES/scripts/firefox-restart.py` strips it when matching windows.
 
+Toolbar popup and keyboard shortcuts (about:addons → Manage Extension Shortcuts;
+none bound by default): freeze this window now; this window no freeze for 1 h /
+never / clear; all windows pause 1 h / pause / resume. The popup's status line
+shows frozen windows and unloaded/total tabs.
+
+With Auto Tab Discard: the two do not overlap. Auto Tab Discard unloads
+*background* tabs by its own rules; this extension only ever touches the one
+*active* tab per window, which Auto Tab Discard cannot. Both use the same
+`tabs.discard`, so a tab unloaded by either shows the same way (greyed title,
+reload on activation). No settings on either side are needed for them to coexist.
+
 Skipped: audible tabs, already-discarded tabs, non-http(s)/file pages, and tabs
 whose discard is refused (the placeholder stays, the tab remains loaded).
 

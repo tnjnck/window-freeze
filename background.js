@@ -129,6 +129,27 @@ async function restore(placeholderId) {
   }
 }
 
+// --- commands: toolbar popup buttons and keyboard shortcuts share these
+const H = 3600000;
+async function command(name) {
+  const w = await browser.windows.getLastFocused();
+  switch (name) {
+    case "freeze-now":   exempt.delete(w.id); return freeze(w.id);
+    case "exempt-1h":    exempt.set(w.id, Date.now() + H); return;
+    case "exempt-never": exempt.set(w.id, Infinity); return;
+    case "exempt-clear": exempt.delete(w.id); return;
+    case "pause-1h":     return setPause(Date.now() + H);
+    case "pause":        return setPause(Infinity);
+    case "resume":       return setPause(0);
+  }
+}
+async function setPause(until) {
+  pausedUntil = until;
+  await browser.storage.local.set({ pausedUntil: until === Infinity ? 8.64e15 : until });
+  updateBadge();
+}
+browser.commands.onCommand.addListener(command);
+
 // --- messages from the frozen page and the toolbar popup
 browser.runtime.onMessage.addListener(async (msg, sender) => {
   if (typeof msg === "string") msg = { type: msg };
@@ -141,24 +162,12 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
       return (await browser.storage.local.get("shot:" + sender.tab.id))["shot:" + sender.tab.id] || null;
     case "state": {
       const w = await browser.windows.getLastFocused();
+      const tabs = await browser.tabs.query({});
       return { windowId: w.id, exemptUntil: exempt.get(w.id) || 0, pausedUntil,
-               frozen: [...placeholders.keys()].length };
+               frozen: placeholders.size, tabs: tabs.length,
+               discarded: tabs.filter((t) => t.discarded).length };
     }
-    case "freeze-now": {
-      const w = await browser.windows.getLastFocused();
-      exempt.delete(w.id);
-      return freeze(w.id);
-    }
-    case "exempt": { // msg.ms: duration, Infinity for indefinite, 0 to clear
-      const w = await browser.windows.getLastFocused();
-      if (msg.ms) exempt.set(w.id, msg.ms === "inf" ? Infinity : Date.now() + msg.ms); else exempt.delete(w.id);
-      return;
-    }
-    case "pause": { // msg.ms as above, global
-      pausedUntil = msg.ms ? (msg.ms === "inf" ? Infinity : Date.now() + msg.ms) : 0;
-      await browser.storage.local.set({ pausedUntil: pausedUntil === Infinity ? 8.64e15 : pausedUntil });
-      updateBadge();
-      return;
-    }
+    case "command":
+      return command(msg.name);
   }
 });
