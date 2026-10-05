@@ -45,6 +45,18 @@ They do not overlap. Auto Tab Discard unloads background tabs by its own rules;
 Window Freeze only touches the one active tab per window. Both use the same
 `tabs.discard`, so an unloaded tab looks and behaves the same whichever did it.
 
+## Prior art
+
+Every tab unloader stops at the selected tab of each window because
+[`tabs.discard`](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/discard)
+skips it, and Firefox's own unloader and Chrome's Memory Saver do the same.
+[Auto Tab Discard](https://github.com/rNeomy/auto-tab-discard) has an option to
+open a blank page so the active tab can be discarded, but only from its manual
+"discard" commands, with a plain text placeholder and no restore on refocus;
+[issue #127](https://github.com/rNeomy/auto-tab-discard/issues/127) asks for the
+automatic version. [Dormancy](https://github.com/autonome/Dormancy) treats
+unfocused windows' tabs as candidates but cannot touch their selected tab.
+
 ## Install
 
 Not on addons.mozilla.org yet. Download the signed `.xpi` from the releases
