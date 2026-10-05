@@ -1,11 +1,12 @@
 <!doctype html>
-<html><head><meta charset="utf-8">
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="theme.css">
 <style>
-  body{font:13px system-ui,sans-serif;margin:0;min-width:240px}
-  h1{font-size:11px;font-weight:600;color:#888;margin:8px 10px 2px;text-transform:uppercase}
-  button{display:block;width:100%;text-align:left;border:0;background:none;padding:6px 10px;font:inherit;cursor:pointer;white-space:nowrap}
-  button:hover{background:rgba(128,128,128,.15)}
-  .state{color:#888;margin:0 10px 6px;white-space:nowrap}
+  body{margin:0;min-width:250px}
+  h1{font-size:11px;font-weight:600;color:var(--muted);margin:8px 10px 2px;text-transform:uppercase}
+  button{display:block;width:100%;text-align:left;border:0;background:none;color:inherit;padding:6px 10px;font:inherit;cursor:pointer;white-space:nowrap}
+  button:hover{background:var(--hover)}
+  .state{color:var(--muted);margin:0 10px 6px;white-space:nowrap}
+  hr{border:0;border-top:1px solid var(--line);margin:4px 0}
 </style></head>
 <body>
   <h1>This window</h1>
@@ -16,8 +17,11 @@
   <button data-act="exempt-clear">Clear exemption</button>
   <h1>All windows</h1>
   <div class="state" id="gstate"></div>
+  <button data-act="freeze-all">Freeze all windows</button>
   <button data-act="pause-1h">Pause for 1 h</button>
   <button data-act="pause">Pause</button>
   <button data-act="resume">Resume</button>
+  <hr>
+  <button id="opts">Settings…</button>
   <script src="popup.js"></script>
 </body></html>

@@ -7,12 +7,17 @@ frame.src = browser.runtime.getURL("frozen.html") + "?preview&t=" + encodeURICom
 function showTitle(s) {
   document.getElementById("ptitle").textContent = renderTemplate(s.titleTemplate, sampleCtx);
 }
-getSettings().then((s) => {
-  for (const el of fields) {
-    if (el.type === "checkbox") el.checked = !!s[el.dataset.k]; else el.value = s[el.dataset.k];
-  }
-  showTitle(s);
-});
+function load() {
+  getSettings().then((s) => {
+    for (const el of fields) {
+      if (el === document.activeElement) continue;
+      if (el.type === "checkbox") el.checked = !!s[el.dataset.k]; else el.value = s[el.dataset.k];
+    }
+    showTitle(s);
+  });
+}
+load();
+browser.storage.onChanged.addListener(load); // e.g. "Never freeze this site" from the menu
 for (const el of fields) {
   el.addEventListener("input", async () => {
     const v = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value;

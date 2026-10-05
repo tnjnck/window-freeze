@@ -1,4 +1,3 @@
-const PREFIX = "Frozen: ";
 const PAGE = browser.runtime.getURL("frozen.html");
 
 // windowId -> when it lost focus. Absent = focused now.
@@ -9,19 +8,14 @@ const placeholders = new Map();
 const exempt = new Map();
 const dwellTimers = new Map();
 
-let minutes = 5;
-let dwell = 2;
-let pausedUntil = 0; // global; persisted
-let exclude = "";
-let wholeWindow = true;
+let S = { ...DEFAULTS };
+let pausedUntil = 0;
 
 async function loadSettings() {
-  const s = await getSettings();
-  minutes = Number(s.minutes) || 5;
-  dwell = Math.max(0, Number(s.dwell) || 0);
-  pausedUntil = Number(s.pausedUntil) || 0;
-  exclude = s.exclude || "";
-  wholeWindow = !!s.wholeWindow;
+  S = await getSettings();
+  S.minutes = Number(S.minutes) || 5;
+  S.dwell = Math.max(0, Number(S.dwell) || 0);
+  pausedUntil = Number(S.pausedUntil) || 0;
   updateBadge();
 }
 browser.storage.onChanged.addListener(loadSettings);
@@ -53,8 +47,20 @@ async function init() {
     const orig = byToken.get(tok);
     if (orig !== undefined && orig !== t.id) placeholders.set(t.id, orig);
   }
+  browser.menus.create({ id: "never-site", title: "Never freeze this site", contexts: ["page", "tab"] });
+  browser.menus.create({ id: "freeze-window", title: "Freeze this window", contexts: ["page", "tab"] });
 }
 init();
+
+browser.menus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === "freeze-window") return command("freeze-now");
+  if (info.menuItemId === "never-site" && tab) {
+    let host = "";
+    try { host = new URL(tab.url).host; } catch (e) { return; }
+    if (!host || excluded(tab.url, S.exclude)) return;
+    await browser.storage.local.set({ exclude: (S.exclude ? S.exclude.replace(/\s*$/, "\n") : "") + host });
+  }
+});
 
 // --- focus tracking
 browser.windows.onFocusChanged.addListener(async (windowId) => {
@@ -65,8 +71,8 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
   }
   for (const [id, t] of dwellTimers) { clearTimeout(t); dwellTimers.delete(id); }
   if (windowId === browser.windows.WINDOW_ID_NONE) return;
-  if (dwell === 0) return unfreeze(windowId);
-  dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, dwell * 1000));
+  if (S.dwell === 0) return unfreeze(windowId);
+  dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, S.dwell * 1000));
 });
 browser.windows.onRemoved.addListener((id) => { unfocusedSince.delete(id); exempt.delete(id); });
 browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); browser.storage.local.remove("shot:" + id); });
@@ -75,7 +81,7 @@ browser.alarms.create("check", { periodInMinutes: 1 });
 browser.alarms.onAlarm.addListener(async () => {
   if (pausedUntil > Date.now()) return;
   if (pausedUntil) { pausedUntil = 0; browser.storage.local.set({ pausedUntil: 0 }); }
-  const cutoff = Date.now() - minutes * 60 * 1000;
+  const cutoff = Date.now() - S.minutes * 60 * 1000;
   for (const [windowId, since] of unfocusedSince) {
     if ((exempt.get(windowId) || 0) > Date.now()) continue;
     if (since <= cutoff) await freeze(windowId);
@@ -83,9 +89,28 @@ browser.alarms.onAlarm.addListener(async () => {
 });
 
 // --- freeze / unfreeze
-function skip(tab) {
-  return !tab || tab.discarded || tab.audible || placeholders.has(tab.id) ||
-    !/^(https?|file):/.test(tab.url || "") || excluded(tab.url, exclude);
+async function hasEditedForm(tabId) {
+  if (!S.protectForms) return false;
+  try {
+    const [r] = await browser.tabs.executeScript(tabId, { code: `(() => {
+      for (const el of document.querySelectorAll("input, textarea")) {
+        if (el.type === "hidden" || el.type === "submit" || el.type === "button") continue;
+        if (el.type === "checkbox" || el.type === "radio") { if (el.checked !== el.defaultChecked) return true; continue; }
+        if (el.value !== el.defaultValue) return true;
+      }
+      const a = document.activeElement;
+      return !!(a && a.isContentEditable && a.textContent.trim());
+    })()`, runAt: "document_start" });
+    return !!r;
+  } catch (e) {
+    return false; // restricted page: nothing to protect
+  }
+}
+
+async function unloadable(tab) {
+  return tab && !tab.discarded && !tab.audible && !placeholders.has(tab.id) &&
+    /^(https?|file):/.test(tab.url || "") && !excluded(tab.url, S.exclude) &&
+    !(S.skipPinned && tab.pinned) && !(await hasEditedForm(tab.id));
 }
 
 async function freeze(windowId) {
@@ -94,27 +119,25 @@ async function freeze(windowId) {
   const win = await browser.windows.get(windowId).catch(() => null);
   if (!win || win.type !== "normal") return;
   const [tab] = await browser.tabs.query({ windowId, active: true });
-  if (skip(tab)) return;
-  console.log("freeze", windowId, tab.title);
-  const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  await browser.sessions.setTabValue(tab.id, "wf-orig", token);
-  // Screenshot first, while the tab is still the visible one.
-  const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
-  const url = PAGE + "?t=" + encodeURIComponent(tab.title || tab.url) +
-    "&u=" + encodeURIComponent(tab.url) + "&d=" + Date.now() +
-    "&f=" + encodeURIComponent(tab.favIconUrl || "") + "&k=" + token;
-  const ph = await browser.tabs.create({ windowId, url, active: true, index: tab.index + 1 });
-  placeholders.set(ph.id, tab.id);
-  if (shot) browser.storage.local.set({ ["shot:" + ph.id]: shot });
-  try {
-    await browser.tabs.discard(tab.id);
-  } catch (e) {
-    // discard refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
+  if (tab && !placeholders.has(tab.id) && await unloadable(tab)) {
+    console.log("freeze", windowId, tab.title);
+    const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    await browser.sessions.setTabValue(tab.id, "wf-orig", token);
+    // Screenshot first, while the tab is still the visible one.
+    const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
+    const url = PAGE + "?t=" + encodeURIComponent(tab.title || tab.url) +
+      "&u=" + encodeURIComponent(tab.url) + "&d=" + Date.now() +
+      "&f=" + encodeURIComponent(tab.favIconUrl || "") + "&k=" + token;
+    const ph = await browser.tabs.create({ windowId, url, active: true, index: tab.index + 1 });
+    placeholders.set(ph.id, tab.id);
+    if (shot) browser.storage.local.set({ ["shot:" + ph.id]: shot });
+    // discard may be refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
+    await browser.tabs.discard(tab.id).catch(() => {});
   }
-  if (wholeWindow) {
-    const rest = (await browser.tabs.query({ windowId, discarded: false, audible: false }))
-      .filter((t) => t.id !== ph.id && !excluded(t.url, exclude));
-    for (const t of rest) await browser.tabs.discard(t.id).catch(() => {});
+  if (S.wholeWindow) {
+    for (const t of await browser.tabs.query({ windowId, active: false, discarded: false })) {
+      if (await unloadable(t)) await browser.tabs.discard(t.id).catch(() => {});
+    }
   }
 }
 
@@ -139,12 +162,15 @@ async function restore(placeholderId) {
   }
 }
 
-// --- commands: toolbar popup buttons and keyboard shortcuts share these
+// --- commands: toolbar popup buttons, keyboard shortcuts and menus share these
 const H = 3600000;
 async function command(name) {
   const w = await browser.windows.getLastFocused();
   switch (name) {
     case "freeze-now":   exempt.delete(w.id); return freeze(w.id);
+    case "freeze-all":
+      for (const x of await browser.windows.getAll()) { exempt.delete(x.id); await freeze(x.id); }
+      return;
     case "exempt-1h":    exempt.set(w.id, Date.now() + H); return;
     case "exempt-never": exempt.set(w.id, Infinity); return;
     case "exempt-clear": exempt.delete(w.id); return;
@@ -173,8 +199,12 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
     case "state": {
       const w = await browser.windows.getLastFocused();
       const tabs = await browser.tabs.query({});
+      const wins = (await browser.windows.getAll()).filter((x) => x.type === "normal");
+      const frozenWins = new Set();
+      for (const t of tabs) if (placeholders.has(t.id)) frozenWins.add(t.windowId);
       return { windowId: w.id, exemptUntil: exempt.get(w.id) || 0, pausedUntil,
-               frozen: placeholders.size, tabs: tabs.length,
+               windows: wins.length, frozen: frozenWins.size,
+               tabs: tabs.length - placeholders.size,
                discarded: tabs.filter((t) => t.discarded).length };
     }
     case "command":

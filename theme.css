@@ -1,0 +1,4 @@
+:root{color-scheme:light dark;--fg:#1b1b1f;--muted:#6b6b73;--hover:rgba(0,0,0,.06);--line:#d0d0d6}
+@media (prefers-color-scheme:dark){:root{--fg:#e6e6ea;--muted:#9a9aa3;--hover:rgba(255,255,255,.08);--line:#44444c}}
+body{color:var(--fg);font:13px system-ui,sans-serif}
+.hint{color:var(--muted);font-size:12px}

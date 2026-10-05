@@ -25,11 +25,13 @@ and discards it.
   kept in per-tab session data.
 - Toolbar popup and keyboard shortcuts (bind them under about:addons → Manage
   Extension Shortcuts): freeze this window now; this window no freeze for 1 h /
-  never / clear; all windows pause 1 h / pause / resume. The popup also shows
-  how many windows are frozen and how many tabs are unloaded in total.
+  never / clear; freeze all windows; pause 1 h / pause / resume. The popup shows
+  how many windows are frozen and how many tabs are unloaded. The page context
+  menu has "Never freeze this site" and "Freeze this window".
 
 Skipped: audible tabs, already-discarded tabs, non-http(s)/file pages, URLs on
-the never-freeze list, popup and web-app windows (no tab strip to put a
+the never-freeze list, pinned tabs and tabs with an edited form field (both
+options, on by default), popup and web-app windows (no tab strip to put a
 placeholder in), and tabs whose discard Firefox refuses (the placeholder stays,
 the tab remains loaded).
 

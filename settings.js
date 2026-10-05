@@ -12,6 +12,8 @@ const DEFAULTS = {
   labelTemplate: "{title}",
   exclude: "",           // one pattern per line; * is a wildcard; no * = substring
   wholeWindow: true,     // also unload the window's other tabs when it freezes
+  skipPinned: true,      // never unload pinned tabs
+  protectForms: true,    // never unload a tab with an edited input or textarea
   pausedUntil: 0,
 };
 
