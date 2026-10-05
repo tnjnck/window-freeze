@@ -49,7 +49,7 @@ to the placeholder and thawing goes back in history; the page reloads either
 way.
 
 Skipped: audible tabs, already-discarded tabs, non-http(s)/file pages, URLs on
-the never-freeze list, pinned tabs and tabs with an edited form field (both
+the never-freeze list or matching a rule with `freeze = never`, pinned tabs and tabs with an edited form field (both
 options, on by default), and tabs whose discard Firefox refuses (the
 placeholder stays, the tab remains loaded).
 
@@ -60,7 +60,39 @@ Timing, the title and label templates (`{title}` `{url}` `{host}` `{date}`
 colour, or a reader text snapshot; blur radius; darkening; favicon and label on
 or off; text snapshot size cap), and a never-freeze
 list of URL patterns (`*` wildcard, substring otherwise). A live preview sits
-beside the settings.
+beside the settings; "Preview as URL" renders it for a given page.
+
+### Per-site rules
+
+Rules override the global settings for pages whose URL matches. A rule is one
+or more pattern lines (never-freeze syntax) followed by `key = value` lines; a
+blank line ends it. Every matching rule applies, least specific first, each
+overriding the previous: specificity is the number of characters other than
+`*` in the matched pattern (a rule with several patterns counts its most
+specific match), and ties keep text order. A `*` rule has specificity 0, so it
+is a base layer over the form settings that any real pattern overrides; the
+options page shows the form settings in this notation under `*`.
+
+```
+# pattern line(s), then key = value lines; a blank line ends the rule
+*.wikipedia.org/*
+style = reader
+minutes = 15
+
+app.slack.com
+freeze = never
+```
+
+Keys: `style`, `blur`, `dim`, `color`, `showFavicon`, `showLabel`,
+`titleTemplate`, `labelTemplate`, `minutes`, `dwell`, `idleMinutes`,
+`protectForms`, `skipPinned`, `wholeWindow`, `preload`, `readerMaxChars`,
+`unloadedPrefix`, and `freeze` (`never` or `normal`); `colour`, `favicon`,
+`label` and `title` are accepted as aliases. Values are trimmed; wrap one in
+double quotes to keep its spaces (`unloadedPrefix = "💤 "`). Window-level settings (`minutes`,
+`dwell`, `preload`, `wholeWindow`) are taken from the window's active tab;
+tab-level ones (`idleMinutes`, `unloadedPrefix`, `skipPinned`, `protectForms`,
+`freeze`) from each tab's own URL. Parse errors are listed under the textarea
+with their line number; the rest of the rule still applies.
 
 ## With Auto Tab Discard
 

@@ -8,6 +8,9 @@
   input[type=number]{width:5em}
   input[type=text]{width:16em}
   textarea{width:100%;height:7em;font:12px monospace;grid-column:1/-1;box-sizing:border-box}
+  #rules{height:auto}
+  #rerr{white-space:pre-line;color:#c33}
+  #rdef{margin:0;padding:6px 8px;font:12px monospace;color:var(--muted);background:var(--hover);border-radius:4px;grid-column:1/-1}
   iframe{width:100%;aspect-ratio:16/10;border:1px solid var(--line);border-radius:6px;background:#1e1e24}
   #preview{position:sticky;top:8px}
 </style></head>
@@ -49,11 +52,20 @@
     <label>Show label <input type="checkbox" data-k="showLabel"></label>
   </fieldset>
   <fieldset><legend>Never freeze</legend>
-    <div class="hint">One pattern per line, matched against the page URL. <code>*</code> matches anything; a line without <code>*</code> matches as a substring. Lines starting with <code>#</code> are ignored. The page context menu has "Never freeze this site".</div>
+    <div class="hint">One pattern per line, matched against the page URL. <code>*</code> matches anything; a line without <code>*</code> matches as a substring. Lines starting with <code>#</code> are ignored. The page context menu has "Never freeze this site"; <code>freeze = never</code> in a rule below does the same.</div>
     <textarea data-k="exclude" placeholder="app.slack.com&#10;*://mail.google.com/*"></textarea>
+  </fieldset>
+  <fieldset><legend>Per-site rules</legend>
+    <div class="hint">A rule is one or more pattern lines (syntax as above) followed by <code>key = value</code> lines; a blank line ends it. Every rule whose pattern matches the page URL applies, least specific first (specificity = characters other than <code>*</code> in the pattern; ties in text order), each overriding the last. Lines starting with <code>#</code> are ignored.<br>
+    Keys: style, blur, dim, color, showFavicon, showLabel, titleTemplate, labelTemplate, minutes, dwell, idleMinutes, protectForms, skipPinned, wholeWindow, preload, readerMaxChars, unloadedPrefix, freeze (never | normal).</div>
+    <div class="hint">Defaults, as a rule. A <code>*</code> block in your rules overrides these; more specific patterns override <code>*</code>.</div>
+    <pre id="rdef"></pre>
+    <textarea id="rules" data-k="rules" rows="12" placeholder="*.wikipedia.org/*&#10;style = reader&#10;minutes = 15&#10;&#10;app.slack.com&#10;freeze = never"></textarea>
+    <div id="rerr"></div>
   </fieldset>
 </div>
 <div id="preview">
+  <label>Preview as URL <input type="text" id="purl" placeholder="https://example.org/article"></label>
   <iframe id="frame"></iframe>
   <div class="hint">Preview updates as you type. Window title: <b id="ptitle"></b></div>
 </div>

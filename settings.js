@@ -16,6 +16,7 @@ const DEFAULTS = {
   showLabel: true,
   labelTemplate: "{title}",
   exclude: "",           // one pattern per line; * is a wildcard; no * = substring
+  rules: "",             // per-site overrides; format in parseRules
   wholeWindow: true,     // also unload the window's other tabs when it freezes
   skipPinned: true,      // never unload pinned tabs
   protectForms: true,    // never unload a tab with an edited input or textarea
@@ -42,15 +43,120 @@ function templateContext(title, url, when) {
   };
 }
 
+function matchesPattern(url, p) {
+  if (!p.includes("*")) return url.includes(p);
+  const re = new RegExp("^" + p.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i");
+  return re.test(url);
+}
+
 function excluded(url, patterns) {
   for (let p of (patterns || "").split("\n")) {
     p = p.trim();
     if (!p || p.startsWith("#")) continue;
-    if (!p.includes("*")) { if (url.includes(p)) return true; continue; }
-    const re = new RegExp("^" + p.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i");
-    if (re.test(url)) return true;
+    if (matchesPattern(url, p)) return true;
   }
   return false;
+}
+
+// --- per-site rules
+// Blocks separated by blank lines: one or more pattern lines (never-freeze
+// syntax), then "key = value" lines. "#" lines are comments. The first rule
+// whose patterns match a URL overrides the global settings for that page.
+const RULE_KEYS = {
+  style: "style", blur: "number", dim: "number", color: "string", showfavicon: "boolean", showlabel: "boolean",
+  titletemplate: "string", labeltemplate: "string", minutes: "number", dwell: "number", idleminutes: "number",
+  protectforms: "boolean", skippinned: "boolean", wholewindow: "boolean", preload: "boolean",
+  readermaxchars: "number", unloadedprefix: "string", freeze: "freeze",
+};
+const RULE_ALIASES = { colour: "color", favicon: "showfavicon", label: "showlabel", title: "titletemplate" };
+const RULE_NAMES = {};  // lower-case key -> DEFAULTS key
+for (const k of Object.keys(DEFAULTS)) RULE_NAMES[k.toLowerCase()] = k;
+RULE_NAMES.freeze = "freeze";
+const STYLES = ["blur", "dim", "solid", "reader"];
+const BOOLS = { true: true, yes: true, on: true, 1: true, false: false, no: false, off: false, 0: false };
+
+function parseRuleValue(type, v) {
+  switch (type) {
+    case "number": { const n = Number(v); return v === "" || Number.isNaN(n) ? undefined : n; }
+    case "boolean": return BOOLS[v.toLowerCase()];
+    case "style": return STYLES.includes(v) ? v : undefined;
+    case "freeze": return ["never", "normal"].includes(v.toLowerCase()) ? v.toLowerCase() : undefined;
+    default:
+      // "quoted" keeps leading/trailing spaces, which trimming would drop
+      if (/^".*"$/.test(v)) { try { return JSON.parse(v); } catch (e) { return undefined; } }
+      return v;
+  }
+}
+
+function parseRules(text) {
+  const rules = [], errors = [];
+  let cur = null;
+  const end = () => { if (cur && cur.patterns.length) rules.push(cur); cur = null; };
+  (text || "").split("\n").forEach((raw, i) => {
+    const line = i + 1, t = raw.trim();
+    if (!t) return end();
+    if (t.startsWith("#")) return;
+    const eq = t.indexOf("=");
+    if (eq < 0) {
+      if (cur && Object.keys(cur.overrides).length) return errors.push({ line, message: "expected key = value" });
+      if (!cur) cur = { patterns: [], overrides: {}, line };
+      cur.patterns.push(t);
+      return;
+    }
+    if (!cur) return errors.push({ line, message: "no pattern line above" });
+    let key = t.slice(0, eq).trim().toLowerCase();
+    const v = t.slice(eq + 1).trim();
+    key = RULE_ALIASES[key] || key;
+    const type = RULE_KEYS[key];
+    if (!type) return errors.push({ line, message: "unknown key " + JSON.stringify(t.slice(0, eq).trim()) });
+    const val = parseRuleValue(type, v);
+    if (val === undefined) return errors.push({ line, message: "bad value for " + RULE_NAMES[key] + ": " + JSON.stringify(v) });
+    cur.overrides[RULE_NAMES[key]] = val;
+  });
+  end();
+  return { rules, errors };
+}
+
+let rulesCache = { text: null, parsed: null };
+function specificity(p) { return p.replace(/\*/g, "").length; }
+
+// Matching rules, least specific first: specificity is the number of non-*
+// characters in the matched pattern (the most specific one if several match);
+// ties keep text order. Each entry is { rule, pattern, specificity }.
+function matchingRules(url, S) {
+  const text = S.rules || "";
+  if (rulesCache.text !== text) rulesCache = { text, parsed: parseRules(text) };
+  const out = [];
+  for (const rule of rulesCache.parsed.rules) {
+    let best = null;
+    for (const p of rule.patterns) {
+      if (matchesPattern(url || "", p) && (!best || specificity(p) > specificity(best))) best = p;
+    }
+    if (best) out.push({ rule, pattern: best, specificity: specificity(best) });
+  }
+  return out.sort((a, b) => a.specificity - b.specificity);
+}
+
+// The most specific matching pattern, or "".
+function ruleFor(url, S) {
+  const m = matchingRules(url, S);
+  return m.length ? m[m.length - 1].pattern : "";
+}
+
+// S with every matching rule applied in turn, least specific first; .freeze is
+// "never" or "normal". A "*" block is the base layer over the form settings.
+function settingsFor(url, S) {
+  const out = { ...S, freeze: "normal" };
+  for (const m of matchingRules(url, S)) Object.assign(out, m.rule.overrides);
+  return out;
+}
+
+// The global settings written in rule syntax under "*", for the options page.
+function defaultsAsRule(S) {
+  const keys = ["style", "blur", "dim", "color", "showFavicon", "showLabel", "titleTemplate", "labelTemplate", "minutes",
+    "dwell", "idleMinutes", "protectForms", "skipPinned", "wholeWindow", "preload", "readerMaxChars", "unloadedPrefix"];
+  const show = (v) => typeof v === "string" && v !== v.trim() ? JSON.stringify(v) : String(v);
+  return ["*", ...keys.map((k) => k + " = " + show(S[k]))].join("\n");
 }
 
 // Text-only copy of a page for the reader placeholder: whitelisted tags, no

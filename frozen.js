@@ -58,7 +58,7 @@ function apply(s) {
   readerEl.style.display = reader ? "block" : "none";
   if (reader && !rendered) renderReader();
 }
-function refresh() { getSettings().then((s) => { settings = s; apply(s); }); }
+function refresh() { getSettings().then((all) => { settings = settingsFor(ctx.url, all); apply(settings); }); }
 refresh();
 browser.storage.onChanged.addListener(refresh);
 

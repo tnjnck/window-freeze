@@ -72,6 +72,19 @@ browser.menus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+// --- per-site settings
+// The page a tab shows, or the one its placeholder stands in for.
+function pageUrl(tab) {
+  if (!tab || !tab.url) return "";
+  if (tab.url.startsWith(PAGE)) return new URL(tab.url).searchParams.get("u") || "";
+  return tab.url;
+}
+// Settings for a window: those of its active tab's page.
+async function windowSettings(windowId) {
+  const [t] = await browser.tabs.query({ windowId, active: true });
+  return settingsFor(pageUrl(t), S);
+}
+
 // --- focus tracking
 browser.windows.onFocusChanged.addListener(async (windowId) => {
   const now = Date.now();
@@ -83,9 +96,10 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
   for (const id of armed) if (id !== windowId) armed.delete(id);
   if (windowId === browser.windows.WINDOW_ID_NONE) return;
   if (armed.has(windowId)) return;
-  if (S.dwell === 0) return unfreeze(windowId);
-  if (S.preload) preload(windowId);
-  dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, S.dwell * 1000));
+  const s = await windowSettings(windowId);
+  if (s.dwell <= 0) return unfreeze(windowId);
+  if (s.preload) preload(windowId);
+  dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, s.dwell * 1000));
 });
 browser.tabs.onActivated.addListener((info) => {
   lastSeen.delete(info.tabId);
@@ -100,25 +114,26 @@ browser.alarms.create("check", { periodInMinutes: 1 });
 browser.alarms.onAlarm.addListener(async () => {
   if (pausedUntil > Date.now()) return;
   if (pausedUntil) { pausedUntil = 0; browser.storage.local.set({ pausedUntil: 0 }); }
-  const cutoff = Date.now() - S.minutes * 60 * 1000;
+  const now = Date.now();
   for (const [windowId, since] of unfocusedSince) {
-    if ((exempt.get(windowId) || 0) > Date.now()) continue;
-    if (since <= cutoff) await freeze(windowId).catch((e) => console.warn("freeze", windowId, e));
+    if ((exempt.get(windowId) || 0) > now) continue;
+    const s = await windowSettings(windowId);
+    if (since <= now - s.minutes * 60e3) await freeze(windowId).catch((e) => console.warn("freeze", windowId, e));
   }
-  if (S.idleMinutes > 0) {
-    const idle = Date.now() - S.idleMinutes * 60 * 1000;
-    for (const t of await browser.tabs.query({ active: false, discarded: false })) {
-      if ((lastSeen.get(t.id) || Infinity) <= idle && await unloadable(t)) await unload(t);
-    }
+  for (const t of await browser.tabs.query({ active: false, discarded: false })) {
+    const s = settingsFor(t.url, S);
+    if (s.idleMinutes <= 0) continue;
+    if ((lastSeen.get(t.id) || Infinity) <= now - s.idleMinutes * 60e3 && await unloadable(t)) await unload(t);
   }
 });
 
 // discard with the title prefix, which the tab strip keeps showing while the
 // tab is unloaded; the page sets its real title again on reload
 async function unload(tab) {
-  if (S.unloadedPrefix && !(tab.title || "").startsWith(S.unloadedPrefix)) {
+  const prefix = settingsFor(tab.url, S).unloadedPrefix;
+  if (prefix && !(tab.title || "").startsWith(prefix)) {
     await browser.tabs.executeScript(tab.id, {
-      code: `document.title = ${JSON.stringify(S.unloadedPrefix)} + document.title;`, runAt: "document_start",
+      code: `document.title = ${JSON.stringify(prefix)} + document.title;`, runAt: "document_start",
     }).catch(() => {});
   }
   await browser.tabs.discard(tab.id).catch(() => {});
@@ -126,7 +141,6 @@ async function unload(tab) {
 
 // --- freeze / unfreeze
 async function hasEditedForm(tabId) {
-  if (!S.protectForms) return false;
   try {
     // Typed-in text only. Checkboxes and radios are skipped: sites toggle
     // hidden ones from script (Wikipedia's menus), which looks like an edit.
@@ -157,10 +171,11 @@ async function windowVisible(windowId) {
 }
 
 async function unloadable(tab) {
+  const s = tab ? settingsFor(tab.url, S) : null;
   const why = !tab ? "no tab" : tab.discarded ? "discarded" : tab.audible ? "audible" :
     placeholders.has(tab.id) ? "placeholder" : !/^(https?|file):/.test(tab.url || "") ? "not a web page" :
-    excluded(tab.url, S.exclude) ? "excluded" : (S.skipPinned && tab.pinned) ? "pinned" :
-    (await hasEditedForm(tab.id)) ? "edited form" : null;
+    excluded(tab.url, S.exclude) ? "excluded" : s.freeze === "never" ? "excluded by rule" :
+    (s.skipPinned && tab.pinned) ? "pinned" : (s.protectForms && await hasEditedForm(tab.id)) ? "edited form" : null;
   if (why) console.log("skip", tab && tab.title, "-", why);
   if (tab && tab.active) { if (why) kept.set(tab.windowId, why); else kept.delete(tab.windowId); }
   return !why;
@@ -168,11 +183,12 @@ async function unloadable(tab) {
 
 // Reader mode: text snapshot taken while the page is loaded. null when the page
 // is restricted or has too little text, and the placeholder shows the screenshot.
-async function readerSnapshot(tabId) {
-  if (S.style !== "reader") return null;
+async function readerSnapshot(tab) {
+  const s = settingsFor(tab.url, S);
+  if (s.style !== "reader") return null;
   try {
-    const [r] = await browser.tabs.executeScript(tabId, {
-      code: "(" + readerExtract.toString() + ")(" + S.readerMaxChars + ")", runAt: "document_start",
+    const [r] = await browser.tabs.executeScript(tab.id, {
+      code: "(" + readerExtract.toString() + ")(" + Math.max(1000, Number(s.readerMaxChars) || 200000) + ")", runAt: "document_start",
     });
     return r && r.chars >= 200 ? r : null;
   } catch (e) {
@@ -196,7 +212,7 @@ async function freeze(windowId, manual = false) {
     console.log("freeze", windowId, win.type, tab.title);
     // Screenshot first, while the tab is still the visible one.
     const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
-    const reader = await readerSnapshot(tab.id);
+    const reader = await readerSnapshot(tab);
     if (win.type === "normal") {
       const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
       await browser.sessions.setTabValue(tab.id, "wf-orig", token);
@@ -216,7 +232,7 @@ async function freeze(windowId, manual = false) {
       await browser.tabs.update(tab.id, { url: placeholderUrl(tab, "&nav=1") });
     }
   }
-  if (S.wholeWindow) {
+  if (settingsFor(tab.url, S).wholeWindow) {
     for (const t of await browser.tabs.query({ windowId, active: false, discarded: false })) {
       if (await unloadable(t)) await unload(t);
     }
@@ -299,9 +315,10 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
       const wid = sender.tab.windowId;
       if (!msg.visible) { const t = dwellTimers.get(wid); if (t) { clearTimeout(t); dwellTimers.delete(wid); } return; }
       if (armed.has(wid)) return;
-      if (S.preload) preload(wid);
+      const s = settingsFor(pageUrl(sender.tab), S);
+      if (s.preload) preload(wid);
       if (S.visibleIsActive && !dwellTimers.has(wid)) {
-        dwellTimers.set(wid, setTimeout(() => { dwellTimers.delete(wid); unfreeze(wid); }, S.dwell * 1000));
+        dwellTimers.set(wid, setTimeout(() => { dwellTimers.delete(wid); unfreeze(wid); }, Math.max(0, s.dwell) * 1000));
       }
       return;
     }
@@ -327,7 +344,9 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
       const frozen = tabs.filter((t) => t.active && t.url.startsWith(PAGE)).length;
       let visible = 0;
       for (const x of wins) if (await windowVisible(x.id)) visible++;
+      const [at] = await browser.tabs.query({ windowId: w.id, active: true });
       return { windowId: w.id, exemptUntil: exempt.get(w.id) || 0, pausedUntil, kept: kept.get(w.id) || "",
+               rule: ruleFor(pageUrl(at), S),
                windows: wins.length, frozen, visible,
                tabs: tabs.length - placeholders.size,
                discarded: tabs.filter((t) => t.discarded).length };

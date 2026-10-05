@@ -7,7 +7,8 @@ function fmt(until) {
 async function refresh() {
   const s = await browser.runtime.sendMessage({ type: "state" });
   document.getElementById("wstate").textContent =
-    [s.exemptUntil ? "not freezing " + fmt(s.exemptUntil) : "", s.kept ? "active tab kept: " + s.kept : ""].filter(Boolean).join(" · ");
+    [s.exemptUntil ? "not freezing " + fmt(s.exemptUntil) : "", s.kept ? "active tab kept: " + s.kept : "",
+     s.rule ? "rule: " + s.rule : ""].filter(Boolean).join(" · ");
   document.getElementById("gstate").textContent =
     (s.pausedUntil > Date.now() ? "paused " + fmt(s.pausedUntil) + "\n" : "") +
     `${s.frozen} of ${s.windows} windows frozen, ${s.visible} on screen · ${s.discarded} of ${s.tabs} tabs unloaded`;
