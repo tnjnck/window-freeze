@@ -1,30 +1,58 @@
-// Per window: when it was last focused. Missing = focused now.
+const PREFIX = "Frozen: ";
+const PAGE = browser.runtime.getURL("frozen.html");
+
+// windowId -> when it lost focus. Absent = focused now.
 const unfocusedSince = new Map();
 // placeholder tabId -> original tabId
 const placeholders = new Map();
-// placeholder tabId -> JPEG data URL of the page at freeze time
-const snapshots = new Map();
-const PREFIX = "Frozen: ";
+// windowId -> timestamp until which it must not be frozen (Infinity = until cleared)
+const exempt = new Map();
+const dwellTimers = new Map();
+
 let minutes = 5;
-let dwell = 2; // seconds a window must stay focused before it unfreezes; 0 = at once
-const dwellTimers = new Map(); // windowId -> timeout
+let dwell = 2;
+let pausedUntil = 0; // global; persisted
 
 async function loadSettings() {
-  const s = await browser.storage.local.get({ minutes: 5, dwell: 2 });
+  const s = await browser.storage.local.get({ minutes: 5, dwell: 2, pausedUntil: 0 });
   minutes = Number(s.minutes) || 5;
   dwell = Math.max(0, Number(s.dwell) || 0);
+  pausedUntil = Number(s.pausedUntil) || 0;
+  updateBadge();
 }
-loadSettings();
 browser.storage.onChanged.addListener(loadSettings);
 
+function updateBadge() {
+  const paused = pausedUntil > Date.now();
+  browser.browserAction.setBadgeText({ text: paused ? "II" : "" });
+  browser.browserAction.setBadgeBackgroundColor({ color: "#777" });
+}
+
+// --- startup: rebuild the placeholder map from per-tab session values, which
+// survive restarts (tab ids do not). Original tabs come back lazy from the
+// session restore, so nothing loads here.
 async function init() {
-  const focused = await browser.windows.getLastFocused();
+  await loadSettings();
+  const focused = await browser.windows.getLastFocused().catch(() => null);
   for (const w of await browser.windows.getAll()) {
-    if (w.id !== focused.id) unfocusedSince.set(w.id, Date.now());
+    if (!focused || w.id !== focused.id) unfocusedSince.set(w.id, Date.now());
+  }
+  const tabs = await browser.tabs.query({});
+  const byToken = new Map();
+  for (const t of tabs) {
+    const tok = await browser.sessions.getTabValue(t.id, "wf-orig").catch(() => null);
+    if (tok) byToken.set(tok, t.id);
+  }
+  for (const t of tabs) {
+    if (!t.url.startsWith(PAGE)) continue;
+    const tok = new URL(t.url).searchParams.get("k");
+    const orig = byToken.get(tok);
+    if (orig !== undefined && orig !== t.id) placeholders.set(t.id, orig);
   }
 }
 init();
 
+// --- focus tracking
 browser.windows.onFocusChanged.addListener(async (windowId) => {
   const now = Date.now();
   for (const w of await browser.windows.getAll()) {
@@ -36,18 +64,21 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
   if (dwell === 0) return unfreeze(windowId);
   dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, dwell * 1000));
 });
-
-browser.windows.onRemoved.addListener((id) => unfocusedSince.delete(id));
-browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); snapshots.delete(id); });
+browser.windows.onRemoved.addListener((id) => { unfocusedSince.delete(id); exempt.delete(id); });
+browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); browser.storage.local.remove("shot:" + id); });
 
 browser.alarms.create("check", { periodInMinutes: 1 });
 browser.alarms.onAlarm.addListener(async () => {
+  if (pausedUntil > Date.now()) return;
+  if (pausedUntil) { pausedUntil = 0; browser.storage.local.set({ pausedUntil: 0 }); }
   const cutoff = Date.now() - minutes * 60 * 1000;
   for (const [windowId, since] of unfocusedSince) {
+    if ((exempt.get(windowId) || 0) > Date.now()) continue;
     if (since <= cutoff) await freeze(windowId);
   }
 });
 
+// --- freeze / unfreeze
 function skip(tab) {
   return !tab || tab.discarded || tab.audible || placeholders.has(tab.id) ||
     !/^(https?|file):/.test(tab.url || "");
@@ -61,18 +92,19 @@ async function freeze(windowId) {
   const [tab] = await browser.tabs.query({ windowId, active: true });
   if (skip(tab)) return;
   console.log("freeze", windowId, tab.title);
-  const url = browser.runtime.getURL("frozen.html") +
-    "?t=" + encodeURIComponent(tab.title || tab.url) + "&f=" + encodeURIComponent(tab.favIconUrl || "");
-  // Screenshot first, while the tab is still the visible one, so the
-  // placeholder looks like the page instead of flashing a blank.
+  const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  await browser.sessions.setTabValue(tab.id, "wf-orig", token);
+  // Screenshot first, while the tab is still the visible one.
   const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
+  const url = PAGE + "?t=" + encodeURIComponent(tab.title || tab.url) +
+    "&f=" + encodeURIComponent(tab.favIconUrl || "") + "&k=" + token;
   const ph = await browser.tabs.create({ windowId, url, active: true, index: tab.index + 1 });
   placeholders.set(ph.id, tab.id);
-  if (shot) snapshots.set(ph.id, shot);
+  if (shot) browser.storage.local.set({ ["shot:" + ph.id]: shot });
   try {
     await browser.tabs.discard(tab.id);
   } catch (e) {
-    // discard refused (e.g. beforeunload): leave the placeholder, the tab stays loaded
+    // discard refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
   }
 }
 
@@ -84,10 +116,12 @@ async function unfreeze(windowId) {
 
 async function restore(placeholderId) {
   const orig = placeholders.get(placeholderId);
+  if (orig === undefined) return;
   console.log("restore", placeholderId, "->", orig);
   placeholders.delete(placeholderId);
   try {
     await browser.tabs.get(orig);
+    await browser.sessions.removeTabValue(orig, "wf-orig");
     await browser.tabs.update(orig, { active: true });
     await browser.tabs.remove(placeholderId);
   } catch (e) {
@@ -95,8 +129,36 @@ async function restore(placeholderId) {
   }
 }
 
-browser.runtime.onMessage.addListener((msg, sender) => {
-  if (!sender.tab) return;
-  if (msg === "restore") return restore(sender.tab.id);
-  if (msg === "snapshot") return Promise.resolve(snapshots.get(sender.tab.id) || null);
+// --- messages from the frozen page and the toolbar popup
+browser.runtime.onMessage.addListener(async (msg, sender) => {
+  if (typeof msg === "string") msg = { type: msg };
+  switch (msg.type) {
+    case "restore":
+      if (sender.tab) return restore(sender.tab.id);
+      return;
+    case "snapshot":
+      if (!sender.tab) return null;
+      return (await browser.storage.local.get("shot:" + sender.tab.id))["shot:" + sender.tab.id] || null;
+    case "state": {
+      const w = await browser.windows.getLastFocused();
+      return { windowId: w.id, exemptUntil: exempt.get(w.id) || 0, pausedUntil,
+               frozen: [...placeholders.keys()].length };
+    }
+    case "freeze-now": {
+      const w = await browser.windows.getLastFocused();
+      exempt.delete(w.id);
+      return freeze(w.id);
+    }
+    case "exempt": { // msg.ms: duration, Infinity for indefinite, 0 to clear
+      const w = await browser.windows.getLastFocused();
+      if (msg.ms) exempt.set(w.id, msg.ms === "inf" ? Infinity : Date.now() + msg.ms); else exempt.delete(w.id);
+      return;
+    }
+    case "pause": { // msg.ms as above, global
+      pausedUntil = msg.ms ? (msg.ms === "inf" ? Infinity : Date.now() + msg.ms) : 0;
+      await browser.storage.local.set({ pausedUntil: pausedUntil === Infinity ? 8.64e15 : pausedUntil });
+      updateBadge();
+      return;
+    }
+  }
 });
