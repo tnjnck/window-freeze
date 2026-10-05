@@ -1,5 +1,22 @@
-const m = document.getElementById("m");
-const d = document.getElementById("d");
-browser.storage.local.get({ minutes: 5, dwell: 2 }).then((s) => { m.value = s.minutes; d.value = s.dwell; });
-m.onchange = () => browser.storage.local.set({ minutes: Number(m.value) || 5 });
-d.onchange = () => browser.storage.local.set({ dwell: Math.max(0, Number(d.value) || 0) });
+const fields = [...document.querySelectorAll("[data-k]")];
+const frame = document.getElementById("frame");
+const sampleCtx = templateContext("An example article — Example Site", "https://example.org/article", Date.now());
+frame.src = browser.runtime.getURL("frozen.html") + "?preview&t=" + encodeURIComponent(sampleCtx.title) +
+  "&u=" + encodeURIComponent(sampleCtx.url) + "&d=" + Date.now() + "&f=" + encodeURIComponent(browser.runtime.getURL("icon.svg"));
+
+function showTitle(s) {
+  document.getElementById("ptitle").textContent = renderTemplate(s.titleTemplate, sampleCtx);
+}
+getSettings().then((s) => {
+  for (const el of fields) {
+    if (el.type === "checkbox") el.checked = !!s[el.dataset.k]; else el.value = s[el.dataset.k];
+  }
+  showTitle(s);
+});
+for (const el of fields) {
+  el.addEventListener("input", async () => {
+    const v = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value;
+    await browser.storage.local.set({ [el.dataset.k]: v });
+    showTitle(await getSettings());
+  });
+}

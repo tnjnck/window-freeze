@@ -1,32 +1,65 @@
 # Window Freeze
 
-Firefox extension. Auto Tab Discard and Firefox's own unloader only discard
-background tabs, so with one window per sway workspace every window's active
-tab stays loaded. This extension covers the active tab of a window that has been
-unfocused for N minutes (default 5, options page) with a placeholder page
-titled `Frozen: <original title>`, then discards the tab. Refocusing the window,
-or the Resume button, reactivates the tab and closes the placeholder.
+Firefox extension that unloads the **active** tab of windows you are not using.
 
-The title prefix keeps sway `[title=...]` criteria and rofi matching working;
-`$DOTFILES/scripts/firefox-restart.py` strips it when matching windows.
+Tab unloaders (Auto Tab Discard, Firefox's own low-memory unloader) only ever
+discard background tabs. If you keep one window per workspace or per monitor,
+every window's selected tab stays loaded for days: Gmail, Slack, Docs, each in
+its own window, each leaking. Window Freeze covers that tab with a placeholder
+and discards it.
 
-Toolbar popup and keyboard shortcuts (about:addons → Manage Extension Shortcuts;
-none bound by default): freeze this window now; this window no freeze for 1 h /
-never / clear; all windows pause 1 h / pause / resume. The popup's status line
-shows frozen windows and unloaded/total tabs.
+## What it does
 
-With Auto Tab Discard: the two do not overlap. Auto Tab Discard unloads
-*background* tabs by its own rules; this extension only ever touches the one
-*active* tab per window, which Auto Tab Discard cannot. Both use the same
-`tabs.discard`, so a tab unloaded by either shows the same way (greyed title,
-reload on activation). No settings on either side are needed for them to coexist.
+- A window that has been unfocused for N minutes (default 5) gets a placeholder
+  tab in front of its active tab, and the active tab is discarded. The
+  placeholder shows a blurred screenshot of the page with its favicon and title.
+- The window title becomes `Frozen: <title>` by default, so window-manager
+  rules and launchers that match on title keep working.
+- The window thaws when it has been focused for a couple of seconds (default 2;
+  0 for immediately), or at once on a click or keypress on the placeholder. The
+  original tab is reactivated and the placeholder closed. Reactivating a
+  discarded tab is a page load.
+- Frozen windows survive a Firefox restart: the placeholder's link to its tab is
+  kept in per-tab session data.
+- Toolbar popup and keyboard shortcuts (bind them under about:addons → Manage
+  Extension Shortcuts): freeze this window now; this window no freeze for 1 h /
+  never / clear; all windows pause 1 h / pause / resume. The popup also shows
+  how many windows are frozen and how many tabs are unloaded in total.
 
-Skipped: audible tabs, already-discarded tabs, non-http(s)/file pages, and tabs
-whose discard is refused (the placeholder stays, the tab remains loaded).
+Skipped: audible tabs, already-discarded tabs, non-http(s)/file pages, URLs on
+the never-freeze list, popup and web-app windows (no tab strip to put a
+placeholder in), and tabs whose discard Firefox refuses (the placeholder stays,
+the tab remains loaded).
 
-Build and sign (unlisted on AMO, auto-approved): bump `version` in `manifest.json`,
-then with the AMO credentials from `~/syncthing/secrets/firefox-dev` in
-`WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`:
-`npx --yes web-ext@latest sign --channel unlisted --source-dir . --ignore-files window-freeze.xpi README.md .gitignore`.
-The signed xpi lands in `web-ext-artifacts/`; open it in Firefox to install.
-Fedora's Firefox 157 enforces signing, so `xpinstall.signatures.required=false` does not help.
+## Options
+
+Timing, the title and label templates (`{title}` `{url}` `{host}` `{date}`
+`{time}`), the placeholder look (blurred or dimmed screenshot, or a solid
+colour; blur radius; darkening; favicon and label on or off), and a never-freeze
+list of URL patterns (`*` wildcard, substring otherwise). A live preview sits
+beside the settings.
+
+## With Auto Tab Discard
+
+They do not overlap. Auto Tab Discard unloads background tabs by its own rules;
+Window Freeze only touches the one active tab per window. Both use the same
+`tabs.discard`, so an unloaded tab looks and behaves the same whichever did it.
+
+## Install
+
+Not on addons.mozilla.org yet. Download the signed `.xpi` from the releases
+page and open it in Firefox.
+
+To build from source: sign it unlisted with
+`npx web-ext sign --channel unlisted --source-dir . --ignore-files README.md LICENSE .gitignore`
+using your own AMO API credentials in `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`.
+Release builds of Firefox require signing. For a quick trial, about:debugging →
+Load Temporary Add-on works without signing but is lost on restart.
+
+## Permissions
+
+`tabs` and `sessions` to swap tabs and remember which placeholder belongs to
+which tab; `<all_urls>` only for the screenshot at freeze time; `storage` for
+settings; `alarms` for the once-a-minute check. Nothing leaves the browser.
+
+MIT.

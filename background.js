@@ -12,12 +12,14 @@ const dwellTimers = new Map();
 let minutes = 5;
 let dwell = 2;
 let pausedUntil = 0; // global; persisted
+let exclude = "";
 
 async function loadSettings() {
-  const s = await browser.storage.local.get({ minutes: 5, dwell: 2, pausedUntil: 0 });
+  const s = await getSettings();
   minutes = Number(s.minutes) || 5;
   dwell = Math.max(0, Number(s.dwell) || 0);
   pausedUntil = Number(s.pausedUntil) || 0;
+  exclude = s.exclude || "";
   updateBadge();
 }
 browser.storage.onChanged.addListener(loadSettings);
@@ -81,7 +83,7 @@ browser.alarms.onAlarm.addListener(async () => {
 // --- freeze / unfreeze
 function skip(tab) {
   return !tab || tab.discarded || tab.audible || placeholders.has(tab.id) ||
-    !/^(https?|file):/.test(tab.url || "");
+    !/^(https?|file):/.test(tab.url || "") || excluded(tab.url, exclude);
 }
 
 async function freeze(windowId) {
@@ -97,6 +99,7 @@ async function freeze(windowId) {
   // Screenshot first, while the tab is still the visible one.
   const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
   const url = PAGE + "?t=" + encodeURIComponent(tab.title || tab.url) +
+    "&u=" + encodeURIComponent(tab.url) + "&d=" + Date.now() +
     "&f=" + encodeURIComponent(tab.favIconUrl || "") + "&k=" + token;
   const ph = await browser.tabs.create({ windowId, url, active: true, index: tab.index + 1 });
   placeholders.set(ph.id, tab.id);

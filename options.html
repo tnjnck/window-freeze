@@ -1,7 +1,47 @@
 <!doctype html>
-<html><head><meta charset="utf-8"></head>
-<body style="font:14px system-ui,sans-serif;display:grid;gap:.6em">
-  <label>Freeze a window after <input id="m" type="number" min="1" style="width:4em"> minutes unfocused</label>
-  <label>Unfreeze after the window has been focused for <input id="d" type="number" min="0" step="0.5" style="width:4em"> seconds (0: immediately). A click or key on the frozen page unfreezes at once.</label>
-  <script src="options.js"></script>
+<html><head><meta charset="utf-8">
+<style>
+  body{font:14px system-ui,sans-serif;margin:0;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:16px;min-width:720px}
+  fieldset{border:1px solid #8884;border-radius:6px;margin:0 0 12px;display:grid;gap:8px}
+  legend{font-weight:600}
+  label{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px}
+  input[type=number]{width:5em}
+  input[type=text]{width:16em}
+  textarea{width:100%;height:7em;font:12px monospace;grid-column:1/-1}
+  .hint{color:#888;font-size:12px}
+  iframe{width:100%;aspect-ratio:16/10;border:1px solid #8884;border-radius:6px;background:#1e1e24}
+  #preview{position:sticky;top:8px}
+</style></head>
+<body>
+<div>
+  <fieldset><legend>Timing</legend>
+    <label>Freeze a window after it has been unfocused for (minutes) <input type="number" min="1" data-k="minutes"></label>
+    <label>Thaw after it has been focused for (seconds; 0 = at once) <input type="number" min="0" step="0.5" data-k="dwell"></label>
+    <div class="hint">A click or key on the frozen page thaws it immediately.</div>
+  </fieldset>
+  <fieldset><legend>Placeholder</legend>
+    <label>Window title <input type="text" data-k="titleTemplate"></label>
+    <label>Label on the page <input type="text" data-k="labelTemplate"></label>
+    <div class="hint">Placeholders: {title} {url} {host} {date} {time}</div>
+    <label>Background <select data-k="style">
+      <option value="blur">blurred screenshot</option>
+      <option value="dim">dimmed screenshot</option>
+      <option value="solid">solid colour</option></select></label>
+    <label>Blur (px) <input type="number" min="0" max="40" data-k="blur"></label>
+    <label>Darken (%) <input type="number" min="0" max="100" data-k="dim"></label>
+    <label>Colour <input type="color" data-k="color"></label>
+    <label>Show favicon <input type="checkbox" data-k="showFavicon"></label>
+    <label>Show label <input type="checkbox" data-k="showLabel"></label>
+  </fieldset>
+  <fieldset><legend>Never freeze</legend>
+    <div class="hint">One pattern per line, matched against the page URL. <code>*</code> matches anything; a line without <code>*</code> matches as a substring. Lines starting with <code>#</code> are ignored.</div>
+    <textarea data-k="exclude" placeholder="app.slack.com&#10;*://mail.google.com/*"></textarea>
+  </fieldset>
+</div>
+<div id="preview">
+  <iframe id="frame"></iframe>
+  <div class="hint">Preview updates as you type. Window title: <b id="ptitle"></b></div>
+</div>
+<script src="settings.js"></script>
+<script src="options.js"></script>
 </body></html>
