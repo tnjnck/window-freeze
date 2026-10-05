@@ -33,7 +33,7 @@ if (preview) {
   browser.runtime.sendMessage("snapshot").then((shot) => {
     if (shot) shotEl.style.backgroundImage = `url(${shot})`;
   });
-  const resume = () => browser.runtime.sendMessage("restore");
+  const resume = () => q.has("nav") ? history.back() : browser.runtime.sendMessage("restore");
   addEventListener("mousedown", resume);
   addEventListener("keydown", (e) => { if (!e.ctrlKey && !e.altKey && !e.metaKey) resume(); });
 }

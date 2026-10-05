@@ -29,11 +29,14 @@ and discards it.
   how many windows are frozen and how many tabs are unloaded. The page context
   menu has "Never freeze this site" and "Freeze this window".
 
+Popup and web-app windows have no tab strip, so there the tab itself navigates
+to the placeholder and thawing goes back in history; the page reloads either
+way.
+
 Skipped: audible tabs, already-discarded tabs, non-http(s)/file pages, URLs on
 the never-freeze list, pinned tabs and tabs with an edited form field (both
-options, on by default), popup and web-app windows (no tab strip to put a
-placeholder in), and tabs whose discard Firefox refuses (the placeholder stays,
-the tab remains loaded).
+options, on by default), and tabs whose discard Firefox refuses (the
+placeholder stays, the tab remains loaded).
 
 ## Options
 

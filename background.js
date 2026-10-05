@@ -7,6 +7,9 @@ const placeholders = new Map();
 // windowId -> timestamp until which it must not be frozen (Infinity = until cleared)
 const exempt = new Map();
 const dwellTimers = new Map();
+// windows frozen while focused (Freeze now / Freeze all): no dwell-thaw until
+// focus has actually left and come back
+const armed = new Set();
 
 let S = { ...DEFAULTS };
 let pausedUntil = 0;
@@ -70,12 +73,15 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
     else if (!unfocusedSince.has(w.id)) unfocusedSince.set(w.id, now);
   }
   for (const [id, t] of dwellTimers) { clearTimeout(t); dwellTimers.delete(id); }
+  for (const id of armed) if (id !== windowId) armed.delete(id);
   if (windowId === browser.windows.WINDOW_ID_NONE) return;
+  if (armed.has(windowId)) return;
   if (S.dwell === 0) return unfreeze(windowId);
   dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, S.dwell * 1000));
 });
 browser.windows.onRemoved.addListener((id) => { unfocusedSince.delete(id); exempt.delete(id); });
 browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); browser.storage.local.remove("shot:" + id); });
+browser.tabs.onUpdated.addListener((id, ch) => { if (ch.url && !ch.url.startsWith(PAGE)) browser.storage.local.remove("shot:" + id); }, { properties: ["url"] });
 
 browser.alarms.create("check", { periodInMinutes: 1 });
 browser.alarms.onAlarm.addListener(async () => {
@@ -84,7 +90,7 @@ browser.alarms.onAlarm.addListener(async () => {
   const cutoff = Date.now() - S.minutes * 60 * 1000;
   for (const [windowId, since] of unfocusedSince) {
     if ((exempt.get(windowId) || 0) > Date.now()) continue;
-    if (since <= cutoff) await freeze(windowId);
+    if (since <= cutoff) await freeze(windowId).catch((e) => console.warn("freeze", windowId, e));
   }
 });
 
@@ -108,31 +114,45 @@ async function hasEditedForm(tabId) {
 }
 
 async function unloadable(tab) {
-  return tab && !tab.discarded && !tab.audible && !placeholders.has(tab.id) &&
-    /^(https?|file):/.test(tab.url || "") && !excluded(tab.url, S.exclude) &&
-    !(S.skipPinned && tab.pinned) && !(await hasEditedForm(tab.id));
+  const why = !tab ? "no tab" : tab.discarded ? "discarded" : tab.audible ? "audible" :
+    placeholders.has(tab.id) ? "placeholder" : !/^(https?|file):/.test(tab.url || "") ? "not a web page" :
+    excluded(tab.url, S.exclude) ? "excluded" : (S.skipPinned && tab.pinned) ? "pinned" :
+    (await hasEditedForm(tab.id)) ? "edited form" : null;
+  if (why) console.log("skip", tab && tab.title, "-", why);
+  return !why;
+}
+
+function placeholderUrl(tab, extra) {
+  return PAGE + "?t=" + encodeURIComponent(tab.title || tab.url) +
+    "&u=" + encodeURIComponent(tab.url) + "&d=" + Date.now() +
+    "&f=" + encodeURIComponent(tab.favIconUrl || "") + extra;
 }
 
 async function freeze(windowId) {
-  // Tabless (popup / web-app) windows: creating a tab there is intercepted by
-  // the web-app extensions and spawns stray windows. Leave them alone.
   const win = await browser.windows.get(windowId).catch(() => null);
-  if (!win || win.type !== "normal") return;
+  if (!win) return;
   const [tab] = await browser.tabs.query({ windowId, active: true });
-  if (tab && !placeholders.has(tab.id) && await unloadable(tab)) {
-    console.log("freeze", windowId, tab.title);
-    const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    await browser.sessions.setTabValue(tab.id, "wf-orig", token);
+  if (!tab || tab.url.startsWith(PAGE)) return;
+  if (await unloadable(tab)) {
+    console.log("freeze", windowId, win.type, tab.title);
     // Screenshot first, while the tab is still the visible one.
     const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
-    const url = PAGE + "?t=" + encodeURIComponent(tab.title || tab.url) +
-      "&u=" + encodeURIComponent(tab.url) + "&d=" + Date.now() +
-      "&f=" + encodeURIComponent(tab.favIconUrl || "") + "&k=" + token;
-    const ph = await browser.tabs.create({ windowId, url, active: true, index: tab.index + 1 });
-    placeholders.set(ph.id, tab.id);
-    if (shot) browser.storage.local.set({ ["shot:" + ph.id]: shot });
-    // discard may be refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
-    await browser.tabs.discard(tab.id).catch(() => {});
+    if (win.type === "normal") {
+      const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      await browser.sessions.setTabValue(tab.id, "wf-orig", token);
+      const ph = await browser.tabs.create({ windowId, url: placeholderUrl(tab, "&k=" + token), active: true, index: tab.index + 1 });
+      placeholders.set(ph.id, tab.id);
+      if (shot) browser.storage.local.set({ ["shot:" + ph.id]: shot });
+      // discard may be refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
+      await browser.tabs.discard(tab.id).catch(() => {});
+    } else {
+      // Tabless (popup / web-app) window: no tab strip, and creating a tab here
+      // makes web-app extensions spawn stray windows. Navigate the tab itself
+      // to the placeholder instead; the page is unloaded by leaving it, and
+      // thawing is history.back(), which also works after a restart.
+      if (shot) await browser.storage.local.set({ ["shot:" + tab.id]: shot });
+      await browser.tabs.update(tab.id, { url: placeholderUrl(tab, "&nav=1") });
+    }
   }
   if (S.wholeWindow) {
     for (const t of await browser.tabs.query({ windowId, active: false, discarded: false })) {
@@ -143,11 +163,16 @@ async function freeze(windowId) {
 
 async function unfreeze(windowId) {
   const [active] = await browser.tabs.query({ windowId, active: true });
-  if (!active || !placeholders.has(active.id)) return;
-  await restore(active.id);
+  if (!active) return;
+  await restore(active.id, active.url);
 }
 
-async function restore(placeholderId) {
+async function restore(placeholderId, url) {
+  if (!url) url = (await browser.tabs.get(placeholderId).catch(() => ({}))).url || "";
+  if (url.startsWith(PAGE) && url.includes("nav=1")) {
+    console.log("restore (back)", placeholderId);
+    return browser.tabs.goBack(placeholderId).catch(() => {});
+  }
   const orig = placeholders.get(placeholderId);
   if (orig === undefined) return;
   console.log("restore", placeholderId, "->", orig);
@@ -167,9 +192,13 @@ const H = 3600000;
 async function command(name) {
   const w = await browser.windows.getLastFocused();
   switch (name) {
-    case "freeze-now":   exempt.delete(w.id); return freeze(w.id);
+    case "freeze-now":   exempt.delete(w.id); armed.add(w.id); return freeze(w.id).catch((e) => console.warn("freeze", e));
     case "freeze-all":
-      for (const x of await browser.windows.getAll()) { exempt.delete(x.id); await freeze(x.id); }
+      for (const x of await browser.windows.getAll()) {
+        exempt.delete(x.id);
+        if (x.id === w.id) armed.add(x.id);
+        await freeze(x.id).catch((e) => console.warn("freeze", x.id, e));
+      }
       return;
     case "exempt-1h":    exempt.set(w.id, Date.now() + H); return;
     case "exempt-never": exempt.set(w.id, Infinity); return;
@@ -199,11 +228,10 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
     case "state": {
       const w = await browser.windows.getLastFocused();
       const tabs = await browser.tabs.query({});
-      const wins = (await browser.windows.getAll()).filter((x) => x.type === "normal");
-      const frozenWins = new Set();
-      for (const t of tabs) if (placeholders.has(t.id)) frozenWins.add(t.windowId);
+      const wins = await browser.windows.getAll();
+      const frozen = tabs.filter((t) => t.active && t.url.startsWith(PAGE)).length;
       return { windowId: w.id, exemptUntil: exempt.get(w.id) || 0, pausedUntil,
-               windows: wins.length, frozen: frozenWins.size,
+               windows: wins.length, frozen,
                tabs: tabs.length - placeholders.size,
                discarded: tabs.filter((t) => t.discarded).length };
     }
