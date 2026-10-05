@@ -15,6 +15,12 @@ and discards it.
   tab in front of its active tab, and the active tab is discarded, along with
   the window's other tabs (option, on by default). The placeholder shows a
   blurred screenshot of the page with its favicon and title.
+- Alternatively the placeholder can be a text snapshot of the page (the
+  `reader` style): headings, paragraphs, lists, tables and links, in a
+  scrollable column at the scroll position the page was at. Reading and
+  scrolling do not thaw; a click, a key or a link does, and a link also takes
+  the thawed tab there. Pages with under 200 characters of text (apps, canvas
+  pages, restricted pages) fall back to the screenshot.
 - The window title becomes `Frozen: <title>` by default, so window-manager
   rules and launchers that match on title keep working.
 - The window thaws when it has been focused for a couple of seconds (default 2;
@@ -50,8 +56,9 @@ placeholder stays, the tab remains loaded).
 ## Options
 
 Timing, the title and label templates (`{title}` `{url}` `{host}` `{date}`
-`{time}`), the placeholder look (blurred or dimmed screenshot, or a solid
-colour; blur radius; darkening; favicon and label on or off), and a never-freeze
+`{time}`), the placeholder look (blurred or dimmed screenshot, a solid
+colour, or a reader text snapshot; blur radius; darkening; favicon and label on
+or off; text snapshot size cap), and a never-freeze
 list of URL patterns (`*` wildcard, substring otherwise). A live preview sits
 beside the settings.
 
@@ -88,7 +95,8 @@ Load Temporary Add-on works without signing but is lost on restart.
 ## Permissions
 
 `tabs` and `sessions` to swap tabs and remember which placeholder belongs to
-which tab; `<all_urls>` only for the screenshot at freeze time; `storage` for
-settings; `alarms` for the once-a-minute check. Nothing leaves the browser.
+which tab; `<all_urls>` for the screenshot and the text snapshot at freeze time;
+`storage` and `unlimitedStorage` for settings and the per-window snapshots;
+`alarms` for the once-a-minute check. Nothing leaves the browser.
 
 MIT.

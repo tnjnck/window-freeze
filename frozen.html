@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head><meta charset="utf-8">
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="theme.css">
 <style>
   html,body{height:100%;margin:0;overflow:hidden;color:#ddd;font:15px system-ui,sans-serif}
   #shot{position:fixed;inset:-24px;background-size:cover;background-position:top left}
@@ -7,10 +7,27 @@
          text-shadow:0 1px 4px rgba(0,0,0,.8)}
   #icon{width:40px;height:40px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.8))}
   #title{max-width:70%;text-align:center;font-size:17px}
+  #reader{display:none;position:fixed;inset:0;overflow-y:auto;background:var(--bg);color:var(--fg);outline:none}
+  #rhead{position:sticky;top:0;display:flex;align-items:center;gap:.6em;padding:.45em 1em;font-size:13px;color:var(--muted);
+         background:var(--bg);border-bottom:1px solid var(--line)}
+  #ricon{width:16px;height:16px}
+  #rtitle{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+  #rbody{max-width:42em;margin:0 auto;padding:1.5em 1.2em 5em;font-size:17px;line-height:1.55;overflow-wrap:break-word}
+  #rbody a{color:inherit;text-decoration:underline}
+  #rbody h1{font-size:1.6em;line-height:1.25} #rbody h2{font-size:1.3em} #rbody h3{font-size:1.1em}
+  #rbody pre{overflow-x:auto;padding:.6em .8em;background:var(--hover);font-size:.85em;line-height:1.4}
+  #rbody code{font-size:.9em}
+  #rbody blockquote{margin:1em 0;padding-left:1em;border-left:3px solid var(--line);color:var(--muted)}
+  #rbody table{border-collapse:collapse;font-size:.9em} #rbody td,#rbody th{border:1px solid var(--line);padding:.2em .5em;vertical-align:top}
+  #rbody hr{border:0;border-top:1px solid var(--line)}
 </style></head>
 <body>
   <div id="shot"></div>
   <div id="label"><img id="icon" alt=""><div id="title"></div></div>
+  <div id="reader" tabindex="-1">
+    <div id="rhead"><img id="ricon" alt=""><span id="rtitle"></span><span id="rtime"></span></div>
+    <div id="rbody"></div>
+  </div>
   <script src="settings.js"></script>
   <script src="frozen.js"></script>
 </body></html>

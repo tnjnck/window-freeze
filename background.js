@@ -23,6 +23,7 @@ async function loadSettings() {
   S.minutes = Number(S.minutes) || 5;
   S.dwell = Math.max(0, Number(S.dwell) || 0);
   S.idleMinutes = Math.max(0, Number(S.idleMinutes) || 0);
+  S.readerMaxChars = Math.max(1000, Number(S.readerMaxChars) || 200000);
   pausedUntil = Number(S.pausedUntil) || 0;
   updateBadge();
 }
@@ -92,8 +93,8 @@ browser.tabs.onActivated.addListener((info) => {
 });
 browser.tabs.onCreated.addListener((t) => { if (!t.active) lastSeen.set(t.id, Date.now()); });
 browser.windows.onRemoved.addListener((id) => { unfocusedSince.delete(id); exempt.delete(id); kept.delete(id); });
-browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); lastSeen.delete(id); browser.storage.local.remove("shot:" + id); });
-browser.tabs.onUpdated.addListener((id, ch) => { if (ch.url && !ch.url.startsWith(PAGE)) browser.storage.local.remove("shot:" + id); }, { properties: ["url"] });
+browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); lastSeen.delete(id); browser.storage.local.remove(["shot:" + id, "reader:" + id]); });
+browser.tabs.onUpdated.addListener((id, ch) => { if (ch.url && !ch.url.startsWith(PAGE)) browser.storage.local.remove(["shot:" + id, "reader:" + id]); }, { properties: ["url"] });
 
 browser.alarms.create("check", { periodInMinutes: 1 });
 browser.alarms.onAlarm.addListener(async () => {
@@ -165,6 +166,20 @@ async function unloadable(tab) {
   return !why;
 }
 
+// Reader mode: text snapshot taken while the page is loaded. null when the page
+// is restricted or has too little text, and the placeholder shows the screenshot.
+async function readerSnapshot(tabId) {
+  if (S.style !== "reader") return null;
+  try {
+    const [r] = await browser.tabs.executeScript(tabId, {
+      code: "(" + readerExtract.toString() + ")(" + S.readerMaxChars + ")", runAt: "document_start",
+    });
+    return r && r.chars >= 200 ? r : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function placeholderUrl(tab, extra) {
   return PAGE + "?t=" + encodeURIComponent(tab.title || tab.url) +
     "&u=" + encodeURIComponent(tab.url) + "&d=" + Date.now() +
@@ -181,12 +196,14 @@ async function freeze(windowId, manual = false) {
     console.log("freeze", windowId, win.type, tab.title);
     // Screenshot first, while the tab is still the visible one.
     const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
+    const reader = await readerSnapshot(tab.id);
     if (win.type === "normal") {
       const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
       await browser.sessions.setTabValue(tab.id, "wf-orig", token);
       const ph = await browser.tabs.create({ windowId, url: placeholderUrl(tab, "&k=" + token), active: true, index: tab.index + 1 });
       placeholders.set(ph.id, tab.id);
       if (shot) browser.storage.local.set({ ["shot:" + ph.id]: shot });
+      if (reader) browser.storage.local.set({ ["reader:" + ph.id]: reader });
       // discard may be refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
       await unload(tab);
     } else {
@@ -195,6 +212,7 @@ async function freeze(windowId, manual = false) {
       // to the placeholder instead; the page is unloaded by leaving it, and
       // thawing is history.back(), which also works after a restart.
       if (shot) await browser.storage.local.set({ ["shot:" + tab.id]: shot });
+      if (reader) await browser.storage.local.set({ ["reader:" + tab.id]: reader });
       await browser.tabs.update(tab.id, { url: placeholderUrl(tab, "&nav=1") });
     }
   }
@@ -290,6 +308,18 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
     case "snapshot":
       if (!sender.tab) return null;
       return (await browser.storage.local.get("shot:" + sender.tab.id))["shot:" + sender.tab.id] || null;
+    case "reader":
+      if (!sender.tab) return null;
+      return (await browser.storage.local.get("reader:" + sender.tab.id))["reader:" + sender.tab.id] || null;
+    case "restore-to": {
+      // a link in the reader placeholder: thaw, then send the original tab there
+      if (!sender.tab || !/^https?:/.test(msg.url || "")) return;
+      if ((sender.tab.url || "").includes("nav=1")) return browser.tabs.update(sender.tab.id, { url: msg.url }).catch(() => {});
+      const orig = placeholders.get(sender.tab.id);
+      await restore(sender.tab.id, sender.tab.url);
+      if (orig !== undefined) await browser.tabs.update(orig, { url: msg.url }).catch(() => {});
+      return;
+    }
     case "state": {
       const w = await browser.windows.getLastFocused();
       const tabs = await browser.tabs.query({});

@@ -38,7 +38,10 @@
     <label>Background <select data-k="style">
       <option value="blur">blurred screenshot</option>
       <option value="dim">dimmed screenshot</option>
-      <option value="solid">solid colour</option></select></label>
+      <option value="solid">solid colour</option>
+      <option value="reader">readable text snapshot</option></select></label>
+    <div class="hint">Text and links only; scroll and read without loading the page. Apps and canvas pages fall back to the screenshot.</div>
+    <label>Text snapshot limit (characters) <input type="number" min="1000" step="1000" data-k="readerMaxChars"></label>
     <label>Blur (px) <input type="number" min="0" max="40" data-k="blur"></label>
     <label>Darken (%) <input type="number" min="0" max="100" data-k="dim"></label>
     <label>Colour <input type="color" data-k="color"></label>
