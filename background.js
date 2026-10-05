@@ -10,6 +10,8 @@ const dwellTimers = new Map();
 // windows frozen while focused (Freeze now / Freeze all): no dwell-thaw until
 // focus has actually left and come back
 const armed = new Set();
+// windowId -> why its active tab was last left loaded
+const kept = new Map();
 
 let S = { ...DEFAULTS };
 let pausedUntil = 0;
@@ -79,7 +81,7 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
   if (S.dwell === 0) return unfreeze(windowId);
   dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, S.dwell * 1000));
 });
-browser.windows.onRemoved.addListener((id) => { unfocusedSince.delete(id); exempt.delete(id); });
+browser.windows.onRemoved.addListener((id) => { unfocusedSince.delete(id); exempt.delete(id); kept.delete(id); });
 browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); browser.storage.local.remove("shot:" + id); });
 browser.tabs.onUpdated.addListener((id, ch) => { if (ch.url && !ch.url.startsWith(PAGE)) browser.storage.local.remove("shot:" + id); }, { properties: ["url"] });
 
@@ -98,11 +100,13 @@ browser.alarms.onAlarm.addListener(async () => {
 async function hasEditedForm(tabId) {
   if (!S.protectForms) return false;
   try {
+    // Typed-in text only. Checkboxes and radios are skipped: sites toggle
+    // hidden ones from script (Wikipedia's menus), which looks like an edit.
     const [r] = await browser.tabs.executeScript(tabId, { code: `(() => {
+      const texty = new Set(["text", "search", "email", "url", "tel", "number", "password", ""]);
       for (const el of document.querySelectorAll("input, textarea")) {
-        if (el.type === "hidden" || el.type === "submit" || el.type === "button") continue;
-        if (el.type === "checkbox" || el.type === "radio") { if (el.checked !== el.defaultChecked) return true; continue; }
-        if (el.value !== el.defaultValue) return true;
+        if (el.tagName === "INPUT" && !texty.has(el.type)) continue;
+        if (el.value && el.value !== el.defaultValue) return true;
       }
       const a = document.activeElement;
       return !!(a && a.isContentEditable && a.textContent.trim());
@@ -119,6 +123,7 @@ async function unloadable(tab) {
     excluded(tab.url, S.exclude) ? "excluded" : (S.skipPinned && tab.pinned) ? "pinned" :
     (await hasEditedForm(tab.id)) ? "edited form" : null;
   if (why) console.log("skip", tab && tab.title, "-", why);
+  if (tab && tab.active) { if (why) kept.set(tab.windowId, why); else kept.delete(tab.windowId); }
   return !why;
 }
 
@@ -230,7 +235,7 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
       const tabs = await browser.tabs.query({});
       const wins = await browser.windows.getAll();
       const frozen = tabs.filter((t) => t.active && t.url.startsWith(PAGE)).length;
-      return { windowId: w.id, exemptUntil: exempt.get(w.id) || 0, pausedUntil,
+      return { windowId: w.id, exemptUntil: exempt.get(w.id) || 0, pausedUntil, kept: kept.get(w.id) || "",
                windows: wins.length, frozen,
                tabs: tabs.length - placeholders.size,
                discarded: tabs.filter((t) => t.discarded).length };
