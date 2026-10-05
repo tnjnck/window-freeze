@@ -13,6 +13,7 @@ let minutes = 5;
 let dwell = 2;
 let pausedUntil = 0; // global; persisted
 let exclude = "";
+let wholeWindow = true;
 
 async function loadSettings() {
   const s = await getSettings();
@@ -20,6 +21,7 @@ async function loadSettings() {
   dwell = Math.max(0, Number(s.dwell) || 0);
   pausedUntil = Number(s.pausedUntil) || 0;
   exclude = s.exclude || "";
+  wholeWindow = !!s.wholeWindow;
   updateBadge();
 }
 browser.storage.onChanged.addListener(loadSettings);
@@ -108,6 +110,11 @@ async function freeze(windowId) {
     await browser.tabs.discard(tab.id);
   } catch (e) {
     // discard refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
+  }
+  if (wholeWindow) {
+    const rest = (await browser.tabs.query({ windowId, discarded: false, audible: false }))
+      .filter((t) => t.id !== ph.id && !excluded(t.url, exclude));
+    for (const t of rest) await browser.tabs.discard(t.id).catch(() => {});
   }
 }
 

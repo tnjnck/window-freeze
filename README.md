@@ -1,6 +1,7 @@
 # Window Freeze
 
-Firefox extension that unloads the **active** tab of windows you are not using.
+Firefox extension that unloads the tabs of windows you are not using,
+including the **active** tab, which no other tab unloader can reach.
 
 Tab unloaders (Auto Tab Discard, Firefox's own low-memory unloader) only ever
 discard background tabs. If you keep one window per workspace or per monitor,
@@ -11,8 +12,9 @@ and discards it.
 ## What it does
 
 - A window that has been unfocused for N minutes (default 5) gets a placeholder
-  tab in front of its active tab, and the active tab is discarded. The
-  placeholder shows a blurred screenshot of the page with its favicon and title.
+  tab in front of its active tab, and the active tab is discarded, along with
+  the window's other tabs (option, on by default). The placeholder shows a
+  blurred screenshot of the page with its favicon and title.
 - The window title becomes `Frozen: <title>` by default, so window-manager
   rules and launchers that match on title keep working.
 - The window thaws when it has been focused for a couple of seconds (default 2;
@@ -41,9 +43,11 @@ beside the settings.
 
 ## With Auto Tab Discard
 
-They do not overlap. Auto Tab Discard unloads background tabs by its own rules;
-Window Freeze only touches the one active tab per window. Both use the same
-`tabs.discard`, so an unloaded tab looks and behaves the same whichever did it.
+Compatible, and with the whole-window option on, not needed for idle windows.
+Auto Tab Discard unloads background tabs of the window you are using by its own
+timers; Window Freeze unloads whole windows you have left, active tab included.
+Both use the same `tabs.discard`, so an unloaded tab looks and behaves the same
+whichever did it.
 
 ## Prior art
 

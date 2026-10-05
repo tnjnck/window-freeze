@@ -11,6 +11,7 @@ const DEFAULTS = {
   showLabel: true,
   labelTemplate: "{title}",
   exclude: "",           // one pattern per line; * is a wildcard; no * = substring
+  wholeWindow: true,     // also unload the window's other tabs when it freezes
   pausedUntil: 0,
 };
 
