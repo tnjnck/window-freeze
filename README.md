@@ -13,7 +13,9 @@ The title prefix keeps sway `[title=...]` criteria and rofi matching working;
 Skipped: audible tabs, already-discarded tabs, non-http(s)/file pages, and tabs
 whose discard is refused (the placeholder stays, the tab remains loaded).
 
-Build: `zip -r ../window-freeze.xpi . -x '.git/*' README.md`.
-Install: about:debugging → Load Temporary Add-on (until restart), or
-`xpinstall.signatures.required=false` if this build allows it, or sign
-unlisted on AMO with `npx web-ext sign`.
+Build and sign (unlisted on AMO, auto-approved): bump `version` in `manifest.json`,
+then with the AMO credentials from `~/syncthing/secrets/firefox-dev` in
+`WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`:
+`npx --yes web-ext@latest sign --channel unlisted --source-dir . --ignore-files window-freeze.xpi README.md .gitignore`.
+The signed xpi lands in `web-ext-artifacts/`; open it in Firefox to install.
+Fedora's Firefox 157 enforces signing, so `xpinstall.signatures.required=false` does not help.
