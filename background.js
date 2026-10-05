@@ -7,6 +7,8 @@ const placeholders = new Map();
 // windowId -> timestamp until which it must not be frozen (Infinity = until cleared)
 const exempt = new Map();
 const dwellTimers = new Map();
+// tabId -> when it was last the active tab of its window
+const lastSeen = new Map();
 // windows frozen while focused (Freeze now / Freeze all): no dwell-thaw until
 // focus has actually left and come back
 const armed = new Set();
@@ -20,6 +22,7 @@ async function loadSettings() {
   S = await getSettings();
   S.minutes = Number(S.minutes) || 5;
   S.dwell = Math.max(0, Number(S.dwell) || 0);
+  S.idleMinutes = Math.max(0, Number(S.idleMinutes) || 0);
   pausedUntil = Number(S.pausedUntil) || 0;
   updateBadge();
 }
@@ -41,6 +44,7 @@ async function init() {
     if (!focused || w.id !== focused.id) unfocusedSince.set(w.id, Date.now());
   }
   const tabs = await browser.tabs.query({});
+  for (const t of tabs) if (!t.active) lastSeen.set(t.id, Date.now());
   const byToken = new Map();
   for (const t of tabs) {
     const tok = await browser.sessions.getTabValue(t.id, "wf-orig").catch(() => null);
@@ -81,8 +85,13 @@ browser.windows.onFocusChanged.addListener(async (windowId) => {
   if (S.dwell === 0) return unfreeze(windowId);
   dwellTimers.set(windowId, setTimeout(() => { dwellTimers.delete(windowId); unfreeze(windowId); }, S.dwell * 1000));
 });
+browser.tabs.onActivated.addListener((info) => {
+  lastSeen.delete(info.tabId);
+  if (info.previousTabId !== undefined) lastSeen.set(info.previousTabId, Date.now());
+});
+browser.tabs.onCreated.addListener((t) => { if (!t.active) lastSeen.set(t.id, Date.now()); });
 browser.windows.onRemoved.addListener((id) => { unfocusedSince.delete(id); exempt.delete(id); kept.delete(id); });
-browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); browser.storage.local.remove("shot:" + id); });
+browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); lastSeen.delete(id); browser.storage.local.remove("shot:" + id); });
 browser.tabs.onUpdated.addListener((id, ch) => { if (ch.url && !ch.url.startsWith(PAGE)) browser.storage.local.remove("shot:" + id); }, { properties: ["url"] });
 
 browser.alarms.create("check", { periodInMinutes: 1 });
@@ -94,7 +103,24 @@ browser.alarms.onAlarm.addListener(async () => {
     if ((exempt.get(windowId) || 0) > Date.now()) continue;
     if (since <= cutoff) await freeze(windowId).catch((e) => console.warn("freeze", windowId, e));
   }
+  if (S.idleMinutes > 0) {
+    const idle = Date.now() - S.idleMinutes * 60 * 1000;
+    for (const t of await browser.tabs.query({ active: false, discarded: false })) {
+      if ((lastSeen.get(t.id) || Infinity) <= idle && await unloadable(t)) await unload(t);
+    }
+  }
 });
+
+// discard with the title prefix, which the tab strip keeps showing while the
+// tab is unloaded; the page sets its real title again on reload
+async function unload(tab) {
+  if (S.unloadedPrefix && !(tab.title || "").startsWith(S.unloadedPrefix)) {
+    await browser.tabs.executeScript(tab.id, {
+      code: `document.title = ${JSON.stringify(S.unloadedPrefix)} + document.title;`, runAt: "document_start",
+    }).catch(() => {});
+  }
+  await browser.tabs.discard(tab.id).catch(() => {});
+}
 
 // --- freeze / unfreeze
 async function hasEditedForm(tabId) {
@@ -149,7 +175,7 @@ async function freeze(windowId) {
       placeholders.set(ph.id, tab.id);
       if (shot) browser.storage.local.set({ ["shot:" + ph.id]: shot });
       // discard may be refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
-      await browser.tabs.discard(tab.id).catch(() => {});
+      await unload(tab);
     } else {
       // Tabless (popup / web-app) window: no tab strip, and creating a tab here
       // makes web-app extensions spawn stray windows. Navigate the tab itself
@@ -161,7 +187,7 @@ async function freeze(windowId) {
   }
   if (S.wholeWindow) {
     for (const t of await browser.tabs.query({ windowId, active: false, discarded: false })) {
-      if (await unloadable(t)) await browser.tabs.discard(t.id).catch(() => {});
+      if (await unloadable(t)) await unload(t);
     }
   }
 }

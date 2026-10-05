@@ -21,6 +21,9 @@ and discards it.
   0 for immediately), or at once on a click or keypress on the placeholder. The
   original tab is reactivated and the placeholder closed. Reactivating a
   discarded tab is a page load.
+- Background tabs in any window are unloaded after they have been out of view
+  for M minutes (default 30; 0 disables), with a title prefix (default `💤 `)
+  that the tab strip shows until the tab is next loaded.
 - Frozen windows survive a Firefox restart: the placeholder's link to its tab is
   kept in per-tab session data.
 - Toolbar popup and keyboard shortcuts (bind them under about:addons → Manage
@@ -48,11 +51,10 @@ beside the settings.
 
 ## With Auto Tab Discard
 
-Compatible, and with the whole-window option on, not needed for idle windows.
-Auto Tab Discard unloads background tabs of the window you are using by its own
-timers; Window Freeze unloads whole windows you have left, active tab included.
-Both use the same `tabs.discard`, so an unloaded tab looks and behaves the same
-whichever did it.
+Compatible but redundant: with whole-window freezing and the background-tab
+timer on, Window Freeze covers what Auto Tab Discard does. Both use the same
+`tabs.discard`, so an unloaded tab looks and behaves the same whichever did it;
+the exclusion lists are separate.
 
 ## Prior art
 
