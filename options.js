@@ -49,3 +49,13 @@ for (const el of fields) {
   });
 }
 purl.addEventListener("input", async () => { setFrame(); showTitle(await getSettings()); });
+
+async function loadLog() {
+  const lines = await browser.runtime.sendMessage({ type: "log" });
+  const el = document.getElementById("evlog");
+  el.textContent = (lines || []).join("\n");
+  el.scrollTop = el.scrollHeight;
+}
+loadLog();
+setInterval(loadLog, 5000);
+document.getElementById("evclear").onclick = async () => { await browser.runtime.sendMessage({ type: "clear-log" }); loadLog(); };

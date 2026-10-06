@@ -52,6 +52,9 @@
     <label class="row"><span>Start loading the page behind the placeholder as soon as the window is focused</span> <input type="checkbox" data-k="preload"></label>
     <label class="row"><span>A window that is on screen counts as in use, even unfocused: it is not frozen, and a frozen one thaws after the delay</span> <input type="checkbox" data-k="visibleIsActive"></label>
     <div class="hint">Relies on the browser knowing which windows are on screen. The popup's "on screen" count shows whether it does on your desktop.</div>
+    <label class="row"><span>Tabless windows (web-app or popup windows with no tab strip)</span>
+      <select data-k="tabless"><option value="navigate">freeze by navigating the tab to the placeholder</option><option value="skip">leave loaded</option></select></label>
+    <div class="hint">A web-app extension that manages such windows may react to the navigation; switch to "leave loaded" if those windows misbehave.</div>
     <label class="row"><span>Unload a background tab after it has been out of view for (minutes; 0 = never)</span> <input type="number" min="0" data-k="idleMinutes"></label>
     <div class="hint">Covers the other tabs of the window you are working in. With this on, a separate tab unloader is not needed.</div>
   </section>
@@ -91,6 +94,12 @@
     <pre id="rdef"></pre>
     <textarea id="rules" data-k="rules" placeholder="*.wikipedia.org/*&#10;style = reader&#10;minutes = 15&#10;&#10;app.slack.com&#10;freeze = never"></textarea>
     <div id="rerr"></div>
+  </section>
+  <section>
+    <h2>Recent events</h2>
+    <div class="hint">Freezes, thaws, and tab and window closures, newest last.</div>
+    <pre id="evlog" style="max-height:20em;overflow:auto;font:12px monospace;white-space:pre-wrap"></pre>
+    <button id="evclear" type="button">Clear</button>
   </section>
 </div>
 <div id="preview">

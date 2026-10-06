@@ -3,6 +3,7 @@ const DEFAULTS = {
   minutes: 5,            // unfocused minutes before a window freezes
   dwell: 2,              // focused seconds before a frozen window thaws (0 = at once)
   preload: true,         // start loading the page behind the placeholder as soon as the window is focused
+  tabless: "navigate",   // tabless (popup / web-app) windows: "navigate" the tab to the placeholder, or "skip" them
   visibleIsActive: false, // a window that is on screen counts as in use: it is not frozen, and a frozen one thaws
   idleMinutes: 30,       // unload a background tab unseen for this long (0 = never)
   unloadedPrefix: "💤 ", // put in front of an unloaded tab's title ("" = none)

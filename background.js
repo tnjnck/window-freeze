@@ -16,6 +16,20 @@ const armed = new Set();
 const kept = new Map();
 
 let S = { ...DEFAULTS };
+
+// Ring buffer of recent events, shown on the settings page.
+const LOG_MAX = 200;
+let logBuf = null;
+async function log(...parts) {
+  const line = new Date().toISOString().slice(11, 19) + " " + parts.map((p) => typeof p === "string" ? p : JSON.stringify(p)).join(" ");
+  console.log(line);
+  if (!logBuf) logBuf = (await browser.storage.local.get({ log: [] })).log;
+  logBuf.push(line);
+  if (logBuf.length > LOG_MAX) logBuf.splice(0, logBuf.length - LOG_MAX);
+  browser.storage.local.set({ log: logBuf });
+}
+// last known url per tab, so a close can be logged with what it held
+const tabUrls = new Map();
 let pausedUntil = 0;
 
 async function loadSettings() {
@@ -40,6 +54,7 @@ function updateBadge() {
 // session restore, so nothing loads here.
 async function init() {
   await loadSettings();
+  log("start", browser.runtime.getManifest().version);
   const focused = await browser.windows.getLastFocused().catch(() => null);
   for (const w of await browser.windows.getAll()) {
     if (!focused || w.id !== focused.id) unfocusedSince.set(w.id, Date.now());
@@ -50,6 +65,22 @@ async function init() {
   for (const t of tabs) {
     const tok = await browser.sessions.getTabValue(t.id, "wf-orig").catch(() => null);
     if (tok) byToken.set(tok, t.id);
+  }
+  for (const t of tabs) tabUrls.set(t.id, t.url);
+  // Placeholders from an earlier install have a different internal uuid and
+  // are dead pages: put the original back and drop them.
+  for (const t of tabs) {
+    if (!/^moz-extension:\/\/[^/]+\/frozen\.html/.test(t.url) || t.url.startsWith(PAGE)) continue;
+    const u = new URL(t.url).searchParams.get("u");
+    const others = tabs.filter((x) => x.windowId === t.windowId && x.id !== t.id);
+    log("stale placeholder", t.id, others.length ? "closing" : "navigating back");
+    if (others.length) {
+      const prev = others.find((x) => x.index === t.index - 1) || others[0];
+      await browser.tabs.update(prev.id, { active: true }).catch(() => {});
+      await browser.tabs.remove(t.id).catch(() => {});
+    } else if (u) {
+      await browser.tabs.update(t.id, { url: u }).catch(() => {});
+    }
   }
   for (const t of tabs) {
     if (!t.url.startsWith(PAGE)) continue;
@@ -105,7 +136,13 @@ browser.tabs.onActivated.addListener((info) => {
   lastSeen.delete(info.tabId);
   if (info.previousTabId !== undefined) lastSeen.set(info.previousTabId, Date.now());
 });
-browser.tabs.onCreated.addListener((t) => { if (!t.active) lastSeen.set(t.id, Date.now()); });
+browser.tabs.onCreated.addListener((t) => { if (!t.active) lastSeen.set(t.id, Date.now()); tabUrls.set(t.id, t.url); });
+browser.tabs.onUpdated.addListener((id, ch, t) => { if (ch.url) tabUrls.set(id, ch.url); }, { properties: ["url"] });
+browser.tabs.onRemoved.addListener((id, info) => {
+  log("tab closed", id, info.isWindowClosing ? "(window closing)" : "", (tabUrls.get(id) || "").slice(0, 100));
+  tabUrls.delete(id);
+});
+browser.windows.onRemoved.addListener((id) => log("window closed", id));
 browser.windows.onRemoved.addListener((id) => { unfocusedSince.delete(id); exempt.delete(id); kept.delete(id); });
 browser.tabs.onRemoved.addListener((id) => { placeholders.delete(id); lastSeen.delete(id); browser.storage.local.remove(["shot:" + id, "reader:" + id]); });
 browser.tabs.onUpdated.addListener((id, ch) => { if (ch.url && !ch.url.startsWith(PAGE)) browser.storage.local.remove(["shot:" + id, "reader:" + id]); }, { properties: ["url"] });
@@ -209,7 +246,7 @@ async function freeze(windowId, manual = false) {
   if (!tab || tab.url.startsWith(PAGE)) return;
   if (S.visibleIsActive && !manual && await windowVisible(windowId)) { kept.set(windowId, "visible"); return; }
   if (await unloadable(tab)) {
-    console.log("freeze", windowId, win.type, tab.title);
+    log("freeze", windowId, win.type, (tab.title || "").slice(0, 60));
     // Screenshot first, while the tab is still the visible one.
     const shot = await browser.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 70 }).catch(() => null);
     const reader = await readerSnapshot(tab);
@@ -222,6 +259,9 @@ async function freeze(windowId, manual = false) {
       if (reader) browser.storage.local.set({ ["reader:" + ph.id]: reader });
       // discard may be refused (e.g. beforeunload): the placeholder stays, the tab stays loaded
       await unload(tab);
+    } else if (S.tabless === "skip") {
+      kept.set(windowId, "tabless window");
+      return;
     } else {
       // Tabless (popup / web-app) window: no tab strip, and creating a tab here
       // makes web-app extensions spawn stray windows. Navigate the tab itself
@@ -258,12 +298,12 @@ async function unfreeze(windowId) {
 async function restore(placeholderId, url) {
   if (!url) url = (await browser.tabs.get(placeholderId).catch(() => ({}))).url || "";
   if (url.startsWith(PAGE) && url.includes("nav=1")) {
-    console.log("restore (back)", placeholderId);
+    log("thaw (back)", placeholderId);
     return browser.tabs.goBack(placeholderId).catch(() => {});
   }
   const orig = placeholders.get(placeholderId);
   if (orig === undefined) return;
-  console.log("restore", placeholderId, "->", orig);
+  log("thaw", placeholderId, "->", orig);
   placeholders.delete(placeholderId);
   try {
     await browser.tabs.get(orig);
@@ -353,5 +393,9 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
     }
     case "command":
       return command(msg.name);
+    case "log":
+      return (await browser.storage.local.get({ log: [] })).log;
+    case "clear-log":
+      logBuf = []; await browser.storage.local.set({ log: [] }); return;
   }
 });
